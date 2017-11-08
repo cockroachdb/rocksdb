@@ -192,12 +192,13 @@ WinMmapReadableFile::WinMmapReadableFile(const std::string& fileName,
       length_(length) {}
 
 WinMmapReadableFile::~WinMmapReadableFile() {
-  BOOL ret = ::UnmapViewOfFile(mapped_region_);
-  (void)ret;
-  assert(ret);
-
-  ret = ::CloseHandle(hMap_);
-  assert(ret);
+#ifndef NDEBUG
+  assert(::UnmapViewOfFile(mapped_region_));
+  assert(::CloseHandle(hMap_));
+#else
+  UnmapViewOfFile(mapped_region_);
+  ::CloseHandle(hMap_);
+#endif
 }
 
 Status WinMmapReadableFile::Read(uint64_t offset, size_t n, Slice* result,
@@ -279,9 +280,11 @@ Status WinMmapFile::MapNewRegion() {
 
     if (hMap_ != NULL) {
       // Unmap the previous one
-      BOOL ret;
-      ret = ::CloseHandle(hMap_);
-      assert(ret);
+#ifndef NDEBUG
+      assert(::CloseHandle(hMap_));
+#else
+      ::CloseHandle(hMap_);
+#endif
       hMap_ = NULL;
     }
 
@@ -1021,9 +1024,11 @@ Status WinDirectory::Fsync() { return Status::OK(); }
 /// WinFileLock
 
 WinFileLock::~WinFileLock() {
-  BOOL ret;
-  ret = ::CloseHandle(hFile_);
-  assert(ret);
+#ifndef NDEBUG
+  assert(::CloseHandle(hFile_));
+#else
+  ::CloseHandle(hFile_);
+#endif
 }
 
 }
