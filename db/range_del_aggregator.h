@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <list>
 #include <map>
 #include <string>
 #include <vector>
@@ -72,7 +73,7 @@ class RangeDelAggregator {
   // covered by a range tombstone residing in the same snapshot stripe.
   // @param mode If collapse_deletions_ is true, this dictates how we will find
   //             the deletion whose interval contains this key. Otherwise, its
-  //             value must be kFullScan indicating linear scan from beginning..
+  //             value must be kFullScan indicating linear scan from beginning.
   bool ShouldDelete(const ParsedInternalKey& parsed,
                     RangePositioningMode mode = kFullScan) {
     if (rep_ == nullptr) {
@@ -116,9 +117,6 @@ class RangeDelAggregator {
   void InvalidateTombstoneMapPositions();
 
   // Writes tombstones covering a range to a table builder.
-  // @param extend_before_min_key If true, the range of tombstones to be added
-  //    to the TableBuilder starts from the beginning of the key-range;
-  //    otherwise, it starts from meta->smallest.
   // @param lower_bound/upper_bound Any range deletion with [start_key, end_key)
   //    that overlaps the target range [*lower_bound, *upper_bound) is added to
   //    the builder. If lower_bound is nullptr, the target range extends
@@ -166,6 +164,7 @@ class RangeDelAggregator {
   struct Rep {
     StripeMap stripe_map_;
     PinnedIteratorsManager pinned_iters_mgr_;
+    std::list<std::string> pinned_slices_;
   };
   // Initializes rep_ lazily. This aggregator object is constructed for every
   // read, so expensive members should only be created when necessary, i.e.,
