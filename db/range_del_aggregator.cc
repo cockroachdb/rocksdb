@@ -204,10 +204,27 @@ Status RangeDelAggregator::AddTombstones(
       first_iter = false;
     }
     ParsedInternalKey parsed_key;
-    if (!ParseInternalKey(input->key(), &parsed_key)) {
+    bool parsed;
+    if (input->IsKeyPinned()) {
+      parsed = ParseInternalKey(input->key(), &parsed_key);
+    } else {
+      // The tombstone map holds slices into the iterator's memory. Make a
+      // copy of the key if it is not pinned.
+      rep_->pinned_slices_.emplace_back(input->key().data(), input->key().size());
+      parsed = ParseInternalKey(rep_->pinned_slices_.back(), &parsed_key);
+    }
+    if (!parsed) {
       return Status::Corruption("Unable to parse range tombstone InternalKey");
     }
-    RangeTombstone tombstone(parsed_key, input->value());
+    RangeTombstone tombstone;
+    if (input->IsValuePinned()) {
+      tombstone = RangeTombstone(parsed_key, input->value());
+    } else {
+      // The tombstone map holds slices into the iterator's memory. Make a
+      // copy of the value if it is not pinned.
+      rep_->pinned_slices_.emplace_back(input->value().data(), input->value().size());
+      tombstone = RangeTombstone(parsed_key, rep_->pinned_slices_.back());
+    }
     AddTombstone(std::move(tombstone));
     input->Next();
   }
