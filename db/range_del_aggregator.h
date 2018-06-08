@@ -92,13 +92,19 @@ class RangeDelAggregator {
   bool ShouldDeleteImpl(const Slice& internal_key,
                         RangePositioningMode mode = kFullScan);
 
-  // Return true if one or more tombstones that are newer than seqno
-  // fully over the range [start,end] (both endpoints are
-  // inclusive). Beware the inclusive endpoint which differs from most
-  // other key ranges, but matches the largest_key metadata for an
-  // sstable.
+  // Return true if one or more tombstones that are newer than seqno fully
+  // over the range [start,end] (both endpoints are inclusive). Beware the
+  // inclusive endpoint which differs from most other key ranges, but matches
+  // the largest_key metadata for an sstable.
   bool ShouldDeleteRange(const Slice& start, const Slice& end,
                          SequenceNumber seqno);
+
+  // Get the range tombstone at the specified user_key and sequence number. A
+  // valid tombstone is always returned, though it may cover an empty range of
+  // keys or the sequence number may be 0 to indicate that no tombstone covers
+  // the specified range of keys.
+  RangeTombstone GetTombstone(const Slice& user_key,
+                              SequenceNumber seqno);
 
   // Checks whether range deletions cover any keys between `start` and `end`,
   // inclusive.

@@ -192,6 +192,37 @@ bool RangeDelAggregator::ShouldDeleteRange(
   return false;
 }
 
+RangeTombstone RangeDelAggregator::GetTombstone(const Slice& user_key,
+                                                SequenceNumber seqno) {
+  if (rep_ == nullptr) {
+    return RangeTombstone(Slice(), Slice(), 0);
+  }
+  if (!collapse_deletions_) {
+    // Only supported in collapse deletions mode.
+    return RangeTombstone(Slice(), Slice(), 0);
+  }
+
+  auto& positional_tombstone_map = GetPositionalTombstoneMap(seqno);
+  const auto& tombstone_map = positional_tombstone_map.raw_map;
+  if (tombstone_map.empty()) {
+    return RangeTombstone(Slice(), Slice(), 0);
+  }
+
+  auto iter = tombstone_map.upper_bound(user_key);
+  if (iter == tombstone_map.begin()) {
+    // before start of deletion intervals
+    return RangeTombstone(Slice(), iter->first, 0);
+  }
+  auto prev = iter;
+  --prev;
+  if (iter == tombstone_map.end()) {
+    // after end of deletion intervals
+    return RangeTombstone(prev->first, Slice(), 0);
+  }
+  return RangeTombstone(prev->first, iter->first,
+                        prev->second.seq_ >= seqno ? prev->second.seq_ : 0);
+}
+
 bool RangeDelAggregator::IsRangeOverlapped(const Slice& start,
                                            const Slice& end) {
   // so far only implemented for non-collapsed mode since file ingestion (only
