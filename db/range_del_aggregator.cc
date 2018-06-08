@@ -74,6 +74,11 @@ class UncollapsedRangeDelMap : public RangeDelMap {
     return false;
   }
 
+  RangeTombstone GetTombstone(const Slice& user_key, SequenceNumber seqno) {
+    // Only supported in CollapsedRangeDelMap.
+    return RangeTombstone(Slice(), Slice(), 0);
+  }
+
   bool IsRangeOverlapped(const Slice& start, const Slice& end) {
     for (const auto& tombstone : rep_) {
       if (ucmp_->Compare(start, tombstone.end_key_) < 0 &&
@@ -271,6 +276,22 @@ class CollapsedRangeDelMap : public RangeDelMap {
     return false;
   }
 
+  RangeTombstone GetTombstone(const Slice& user_key, SequenceNumber seqno) {
+    auto iter = rep_.upper_bound(user_key);
+    if (iter == rep_.begin()) {
+      // before start of deletion intervals
+      return RangeTombstone(Slice(), iter->first, 0);
+    }
+    auto prev = iter;
+    --prev;
+    if (iter == rep_.end()) {
+      // after end of deletion intervals
+      return RangeTombstone(prev->first, Slice(), 0);
+    }
+    return RangeTombstone(prev->first, iter->first,
+                          prev->second >= seqno ? prev->second : 0);
+  }
+
   bool IsRangeOverlapped(const Slice&, const Slice&) {
     // Unimplemented because the only client of this method, file ingestion,
     // uses uncollapsed maps.
@@ -466,6 +487,18 @@ bool RangeDelAggregator::ShouldDeleteRange(
     return false;
   }
   return tombstone_map.ShouldDeleteRange(start, end, seqno);
+}
+
+RangeTombstone RangeDelAggregator::GetTombstone(const Slice& user_key,
+                                                SequenceNumber seqno) {
+  if (rep_ == nullptr) {
+    return RangeTombstone(Slice(), Slice(), 0);
+  }
+  auto& tombstone_map = GetRangeDelMap(seqno);
+  if (tombstone_map.IsEmpty()) {
+    return RangeTombstone(Slice(), Slice(), 0);
+  }
+  return tombstone_map.GetTombstone(user_key, seqno);
 }
 
 bool RangeDelAggregator::IsRangeOverlapped(const Slice& start,
