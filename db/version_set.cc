@@ -540,6 +540,14 @@ class LevelIterator final : public InternalIterator {
   InternalIterator* NewFileIterator() {
     assert(file_index_ < flevel_->num_files);
     auto file_meta = flevel_->files[file_index_];
+    // Check to see if every key in the sstable is covered by a range
+    // tombstone. SkipEmptyFile{Forward,Backward} will take care of
+    // skipping over an "empty" file if we return null.
+    if (range_del_agg_->ShouldDeleteRange(file_meta.smallest_key, file_meta.largest_key,
+                                          file_meta.file_metadata->largest_seqno)) {
+      return nullptr;
+    }
+
     if (should_sample_) {
       sample_file_read_inc(file_meta.file_metadata);
     }
@@ -574,6 +582,21 @@ void LevelIterator::Seek(const Slice& target) {
 
   InitFileIterator(new_file_index);
   if (file_iter_.iter() != nullptr) {
+    // TODO(peter): Rather the seeking to target, we could use
+    // RangeDelAggregator to find the first key within the file that
+    // is not covered by a range tombstone. Something like:
+    //
+    //   first_non_deleted = range_del_agg_->SeekForward(
+    //       smallest_key, largest_key, largest_seqno);
+    //   if (target < first_non_deleted) {
+    //     target = first_non_deleted;
+    //   }
+    //
+    // This optimization applies to SeekForPrev, Next and Prev as
+    // well. For Next and Prev we'd want some way to keep track of the
+    // current tombstone. Perhaps a RangeDelAggregator::Iterator,
+    // though that would need to be stable in the presence of
+    // modifications to RangeDelAggregator tombstone_maps.
     file_iter_.Seek(target);
   }
   SkipEmptyFileForward();
@@ -588,8 +611,8 @@ void LevelIterator::SeekForPrev(const Slice& target) {
   InitFileIterator(new_file_index);
   if (file_iter_.iter() != nullptr) {
     file_iter_.SeekForPrev(target);
-    SkipEmptyFileBackward();
   }
+  SkipEmptyFileBackward();
 }
 
 void LevelIterator::SeekToFirst() {

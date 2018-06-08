@@ -140,6 +140,58 @@ bool RangeDelAggregator::ShouldDeleteImpl(
   return parsed.sequence < tombstone_map_iter->second.seq_;
 }
 
+bool RangeDelAggregator::ShouldDeleteRange(
+    const Slice& start, const Slice& end, SequenceNumber seqno) {
+  if (rep_ == nullptr) {
+    return false;
+  }
+  if (!collapse_deletions_) {
+    // Only supported in collapse deletions mode.
+    return false;
+  }
+
+  ParsedInternalKey parsed_start;
+  if (!ParseInternalKey(start, &parsed_start)) {
+    assert(false);
+  }
+  ParsedInternalKey parsed_end;
+  if (!ParseInternalKey(end, &parsed_end)) {
+    assert(false);
+  }
+  if (icmp_.user_comparator()->Compare(parsed_start.user_key, parsed_end.user_key) > 0) {
+    return false;
+  }
+
+  auto& positional_tombstone_map = GetPositionalTombstoneMap(seqno);
+  const auto& tombstone_map = positional_tombstone_map.raw_map;
+  if (tombstone_map.empty()) {
+    return false;
+  }
+
+  auto iter = tombstone_map.upper_bound(parsed_start.user_key);
+  if (iter == tombstone_map.begin()) {
+    // before start of deletion intervals
+    return false;
+  }
+  --iter;
+  if (icmp_.user_comparator()->Compare(parsed_start.user_key, iter->first) < 0) {
+    return false;
+  }
+  // Loop looking for a tombstone that is older than the range
+  // sequence number, or we determine that our range is completely
+  // covered by newer tombstones.
+  for (; iter != tombstone_map.end(); ++iter) {
+    if (icmp_.user_comparator()->Compare(parsed_end.user_key, iter->first) < 0) {
+      return true;
+    }
+    if (seqno >= iter->second.seq_) {
+      // Tombstone is older than range sequence number.
+      return false;
+    }
+  }
+  return false;
+}
+
 bool RangeDelAggregator::IsRangeOverlapped(const Slice& start,
                                            const Slice& end) {
   // so far only implemented for non-collapsed mode since file ingestion (only
