@@ -135,10 +135,14 @@ inline Slice ExtractUserKey(const Slice& internal_key) {
   return Slice(internal_key.data(), internal_key.size() - 8);
 }
 
-inline ValueType ExtractValueType(const Slice& internal_key) {
+inline uint64_t ExtractInternalKeyFooter(const Slice& internal_key) {
   assert(internal_key.size() >= 8);
   const size_t n = internal_key.size();
-  uint64_t num = DecodeFixed64(internal_key.data() + n - 8);
+  return DecodeFixed64(internal_key.data() + n - 8);
+}
+
+inline ValueType ExtractValueType(const Slice& internal_key) {
+  uint64_t num = ExtractInternalKeyFooter(internal_key);
   unsigned char c = num & 0xff;
   return static_cast<ValueType>(c);
 }
