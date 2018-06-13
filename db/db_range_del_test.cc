@@ -895,11 +895,14 @@ TEST_F(DBRangeDelTest, MemtableBloomFilter) {
 }
 
 TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
-  // make sure compaction treats files containing a split range deletion in the
-  // input level as an atomic unit. I.e., compacting any input-level file(s)
-  // containing a portion of the range deletion causes all other input-level
-  // files containing portions of that same range deletion to be included in the
-  // compaction.
+  // This test originally verified that compaction treated files containing a
+  // split range deletion in the input level as an atomic unit. I.e.,
+  // compacting any input-level file(s) containing a portion of the range
+  // deletion causes all other input-level files containing portions of that
+  // same range deletion to be included in the compaction. Range deletion
+  // tombstones are now truncated to sstable boundaries which removed the need
+  // for that behavior (which could lead to excessively large
+  // compactions).
   const int kNumFilesPerLevel = 4, kValueBytes = 4 << 10;
   Options options = CurrentOptions();
   options.compression = kNoCompression;
@@ -946,16 +949,18 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
     if (i == 0) {
       ASSERT_OK(db_->CompactFiles(
           CompactionOptions(), {meta.levels[1].files[0].name}, 2 /* level */));
+      ASSERT_EQ(0, NumTableFilesAtLevel(1));
     } else if (i == 1) {
       auto begin_str = Key(0), end_str = Key(1);
       Slice begin = begin_str, end = end_str;
       ASSERT_OK(db_->CompactRange(CompactRangeOptions(), &begin, &end));
+      ASSERT_EQ(3, NumTableFilesAtLevel(1));
     } else if (i == 2) {
       ASSERT_OK(db_->SetOptions(db_->DefaultColumnFamily(),
                                 {{"max_bytes_for_level_base", "10000"}}));
       dbfull()->TEST_WaitForCompact();
+      ASSERT_EQ(1, NumTableFilesAtLevel(1));
     }
-    ASSERT_EQ(0, NumTableFilesAtLevel(1));
     ASSERT_GT(NumTableFilesAtLevel(2), 0);
 
     db_->ReleaseSnapshot(snapshot);
