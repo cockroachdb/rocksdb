@@ -599,7 +599,13 @@ void RangeDelAggregator::AddToBuilder(
           meta->smallest = std::move(smallest_candidate);
         }
       }
-      InternalKey largest_candidate = tombstone.SerializeEndKey();
+      // The tombstone end-key is exclusive, so we don't want to use it for
+      // the sstable largest key which is inclusive. Similar to the comment
+      // below, we use a fake (impossible) sequence number that is guaranteed
+      // to make the sstable boundary key come before the next
+      // file's/subcompaction's smallest key.
+      InternalKey largest_candidate(tombstone.end_key_, kMaxSequenceNumber,
+                                    kTypeRangeDeletion);
       if (upper_bound != nullptr &&
           icmp_.user_comparator()->Compare(*upper_bound,
                                            largest_candidate.user_key()) <= 0) {
