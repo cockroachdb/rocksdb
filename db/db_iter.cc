@@ -713,7 +713,7 @@ void DBIter::ReverseToForward() {
   direction_ = kForward;
   if (!iter_->Valid()) {
     iter_->SeekToFirst();
-    range_del_agg_.InvalidateTombstoneMapPositions();
+    range_del_agg_.InvalidateRangeDelMapPositions();
   }
 }
 
@@ -729,7 +729,7 @@ void DBIter::ReverseToBackward() {
     // previous key.
     if (!iter_->Valid()) {
       iter_->SeekToLast();
-      range_del_agg_.InvalidateTombstoneMapPositions();
+      range_del_agg_.InvalidateRangeDelMapPositions();
     }
     ParsedInternalKey ikey;
     FindParseableKey(&ikey, kReverse);
@@ -1163,7 +1163,7 @@ void DBIter::Seek(const Slice& target) {
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
     iter_->Seek(saved_key_.GetInternalKey());
-    range_del_agg_.InvalidateTombstoneMapPositions();
+    range_del_agg_.InvalidateRangeDelMapPositions();
   }
   RecordTick(statistics_, NUMBER_DB_SEEK);
   if (iter_->Valid()) {
@@ -1213,7 +1213,7 @@ void DBIter::SeekForPrev(const Slice& target) {
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
     iter_->SeekForPrev(saved_key_.GetInternalKey());
-    range_del_agg_.InvalidateTombstoneMapPositions();
+    range_del_agg_.InvalidateRangeDelMapPositions();
   }
 
   RecordTick(statistics_, NUMBER_DB_SEEK);
@@ -1261,7 +1261,7 @@ void DBIter::SeekToFirst() {
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
     iter_->SeekToFirst();
-    range_del_agg_.InvalidateTombstoneMapPositions();
+    range_del_agg_.InvalidateRangeDelMapPositions();
   }
 
   RecordTick(statistics_, NUMBER_DB_SEEK);
@@ -1301,14 +1301,14 @@ void DBIter::SeekToLast() {
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
     iter_->SeekToLast();
-    range_del_agg_.InvalidateTombstoneMapPositions();
+    range_del_agg_.InvalidateRangeDelMapPositions();
   }
   // When the iterate_upper_bound is set to a value,
   // it will seek to the last key before the
   // ReadOptions.iterate_upper_bound
   if (iter_->Valid() && iterate_upper_bound_ != nullptr) {
     SeekForPrev(*iterate_upper_bound_);
-    range_del_agg_.InvalidateTombstoneMapPositions();
+    range_del_agg_.InvalidateRangeDelMapPositions();
     if (!Valid()) {
       return;
     } else if (user_comparator_->Equal(*iterate_upper_bound_, key())) {
