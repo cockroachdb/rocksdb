@@ -170,7 +170,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
 
 InternalIterator* TableCache::NewIterator(
     const ReadOptions& options, const EnvOptions& env_options,
-    const InternalKeyComparator& icomparator, const FileDescriptor& fd,
+    const InternalKeyComparator& icomparator, const FileMetaData& file_meta,
     RangeDelAggregator* range_del_agg, TableReader** table_reader_ptr,
     HistogramImpl* file_read_hist, bool for_compaction, Arena* arena,
     bool skip_filters, int level) {
@@ -201,6 +201,7 @@ InternalIterator* TableCache::NewIterator(
     create_new_table_reader = readahead > 0;
   }
 
+  auto& fd = file_meta.fd;
   if (create_new_table_reader) {
     unique_ptr<TableReader> table_reader_unique_ptr;
     s = GetTableReader(
@@ -256,7 +257,10 @@ InternalIterator* TableCache::NewIterator(
         s = range_del_iter->status();
       }
       if (s.ok()) {
-        s = range_del_agg->AddTombstones(std::move(range_del_iter));
+        s = range_del_agg->AddTombstones(
+            std::move(range_del_iter),
+            &file_meta.smallest,
+            &file_meta.largest);
       }
     }
   }
@@ -273,9 +277,10 @@ InternalIterator* TableCache::NewIterator(
 
 Status TableCache::Get(const ReadOptions& options,
                        const InternalKeyComparator& internal_comparator,
-                       const FileDescriptor& fd, const Slice& k,
+                       const FileMetaData& file_meta, const Slice& k,
                        GetContext* get_context, HistogramImpl* file_read_hist,
                        bool skip_filters, int level) {
+  auto& fd = file_meta.fd;
   std::string* row_cache_entry = nullptr;
   bool done = false;
 #ifndef ROCKSDB_LITE
@@ -356,7 +361,9 @@ Status TableCache::Get(const ReadOptions& options,
       }
       if (s.ok()) {
         s = get_context->range_del_agg()->AddTombstones(
-            std::move(range_del_iter));
+            std::move(range_del_iter),
+            &file_meta.smallest,
+            &file_meta.largest);
       }
     }
     if (s.ok()) {
