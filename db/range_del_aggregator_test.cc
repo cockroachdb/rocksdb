@@ -19,6 +19,7 @@ namespace {
 struct ExpectedPoint {
   Slice begin;
   SequenceNumber seq;
+  bool expectAlive;
 };
 
 enum Direction {
@@ -27,7 +28,9 @@ enum Direction {
 };
 
 void VerifyRangeDels(const std::vector<RangeTombstone>& range_dels,
-                     const std::vector<ExpectedPoint>& expected_points) {
+                     const std::vector<ExpectedPoint>& expected_points,
+                     const InternalKey* smallest = nullptr,
+                     const InternalKey* largest = nullptr) {
   auto icmp = InternalKeyComparator(BytewiseComparator());
   // Test same result regardless of which order the range deletions are added.
   for (Direction dir : {kForward, kReverse}) {
@@ -44,7 +47,7 @@ void VerifyRangeDels(const std::vector<RangeTombstone>& range_dels,
     }
     std::unique_ptr<test::VectorIterator> range_del_iter(
         new test::VectorIterator(keys, values));
-    range_del_agg.AddTombstones(std::move(range_del_iter));
+    range_del_agg.AddTombstones(std::move(range_del_iter), smallest, largest);
 
     for (const auto expected_point : expected_points) {
       ParsedInternalKey parsed_key;
@@ -56,9 +59,15 @@ void VerifyRangeDels(const std::vector<RangeTombstone>& range_dels,
           RangeDelAggregator::RangePositioningMode::kForwardTraversal));
       if (parsed_key.sequence > 0) {
         --parsed_key.sequence;
-        ASSERT_TRUE(range_del_agg.ShouldDelete(
-            parsed_key,
-            RangeDelAggregator::RangePositioningMode::kForwardTraversal));
+        if (expected_point.expectAlive) {
+          ASSERT_FALSE(range_del_agg.ShouldDelete(
+              parsed_key,
+              RangeDelAggregator::RangePositioningMode::kForwardTraversal));
+        } else {
+          ASSERT_TRUE(range_del_agg.ShouldDelete(
+              parsed_key,
+              RangeDelAggregator::RangePositioningMode::kForwardTraversal));
+        }
       }
     }
   }
@@ -173,6 +182,18 @@ TEST_F(RangeDelAggregatorTest, AlternateMultipleAboveBelow) {
        {"e", 20},
        {"g", 5},
        {"h", 0}});
+}
+
+TEST_F(RangeDelAggregatorTest, TruncateTombstones) {
+  const InternalKey smallest("b", 1, kTypeRangeDeletion);
+  const InternalKey largest("e", kMaxSequenceNumber, kTypeRangeDeletion);
+  VerifyRangeDels(
+      {{"a", "c", 10}, {"d", "f", 10}},
+      {{"a", 10, true},  // truncated
+       {"b", 10, false}, // not truncated
+       {"d", 10, false}, // not truncated
+       {"e", 10, true}}, // truncated
+      &smallest, &largest);
 }
 
 }  // namespace rocksdb
