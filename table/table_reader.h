@@ -21,6 +21,8 @@ struct ReadOptions;
 struct TableProperties;
 class GetContext;
 class InternalIterator;
+struct FileMetaData;
+class RangeDelAggregator;
 
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
@@ -39,6 +41,8 @@ class TableReader {
   // skip_filters: disables checking the bloom filters even if they exist. This
   //               option is effective only for block-based table format.
   virtual InternalIterator* NewIterator(const ReadOptions&,
+                                        RangeDelAggregator* range_del_agg = nullptr,
+                                        const FileMetaData* file_meta = nullptr,
                                         Arena* arena = nullptr,
                                         bool skip_filters = false) = 0;
 

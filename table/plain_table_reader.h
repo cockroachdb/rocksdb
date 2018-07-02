@@ -79,6 +79,8 @@ class PlainTableReader: public TableReader {
                      bool full_scan_mode);
 
   InternalIterator* NewIterator(const ReadOptions&,
+                                RangeDelAggregator* range_del_agg = nullptr,
+                                const FileMetaData* file_meta = nullptr,
                                 Arena* arena = nullptr,
                                 bool skip_filters = false) override;
 
