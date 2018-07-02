@@ -377,7 +377,11 @@ extern InternalIterator* NewErrorInternalIterator(const Status& status,
                                                   Arena* arena);
 
 InternalIterator* CuckooTableReader::NewIterator(
-    const ReadOptions& /*read_options*/, Arena* arena, bool /*skip_filters*/) {
+    const ReadOptions& /* read_options */,
+    RangeDelAggregator* /* range_del_agg */,
+    const FileMetaData* /* file_meta */,
+    Arena* arena,
+    bool /* skip_filters */) {
   if (!status().ok()) {
     return NewErrorInternalIterator(
         Status::Corruption("CuckooTableReader status is not okay."), arena);

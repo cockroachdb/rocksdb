@@ -45,9 +45,11 @@ class CuckooTableReader: public TableReader {
   Status Get(const ReadOptions& read_options, const Slice& key,
              GetContext* get_context, bool skip_filters = false) override;
 
-  InternalIterator* NewIterator(
-      const ReadOptions&, Arena* arena = nullptr,
-      bool skip_filters = false) override;
+  InternalIterator* NewIterator(const ReadOptions&,
+                                RangeDelAggregator* range_del_agg = nullptr,
+                                const FileMetaData* file_meta = nullptr,
+                                Arena* arena = nullptr,
+                                bool skip_filters = false) override;
   void Prepare(const Slice& target) override;
 
   // Report an approximation of how much memory has been used.
