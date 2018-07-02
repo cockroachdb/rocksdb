@@ -39,7 +39,9 @@ class MockTableReader : public TableReader {
   explicit MockTableReader(const stl_wrappers::KVMap& table) : table_(table) {}
 
   InternalIterator* NewIterator(const ReadOptions&,
-                                Arena* arena,
+                                RangeDelAggregator* range_del_agg = nullptr,
+                                const FileMetaData* file_meta = nullptr,
+                                Arena* arena = nullptr,
                                 bool skip_filters = false) override;
 
   Status Get(const ReadOptions&, const Slice& key, GetContext* get_context,
