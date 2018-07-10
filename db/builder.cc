@@ -100,7 +100,7 @@ Status BuildTable(
 #endif  // !ROCKSDB_LITE
   TableProperties tp;
 
-  if (iter->Valid() || range_del_agg->ShouldAddTombstones()) {
+  if (iter->Valid() || !range_del_agg->IsEmpty()) {
     TableBuilder* builder;
     unique_ptr<WritableFileWriter> file_writer;
     {
@@ -152,9 +152,15 @@ Status BuildTable(
             ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
       }
     }
-    // nullptr for table_{min,max} so all range tombstones will be flushed
-    range_del_agg->AddToBuilder(builder, nullptr /* lower_bound */,
-                                nullptr /* upper_bound */, meta);
+
+    for (auto it = range_del_agg->NewIterator(); it->Valid(); it->Next()) {
+      auto tombstone = it->Tombstone();
+      auto kv = tombstone.Serialize();
+      builder->Add(kv.first.Encode(), kv.second);
+      meta->UpdateBoundariesForRange(
+        kv.first, tombstone.SerializeEndKey(), tombstone.seq_,
+        internal_comparator);
+    }
 
     // Finish and check for builder errors
     bool empty = builder->NumEntries() == 0;
