@@ -25,18 +25,13 @@ class DBRangeDelTest : public DBTestBase {
 
 const int kRangeDelSkipConfigs =
   // Plain tables do not support range deletions.
-  DBRangeDelTest::kSkipPlainTable |
-  // MmapReads disables the iterator pinning that RangeDelAggregator requires.
-  DBRangeDelTest::kSkipMmapReads;
+  DBRangeDelTest::kSkipPlainTable;
 
 // PlainTableFactory and NumTableFilesAtLevel() are not supported in
 // ROCKSDB_LITE
 #ifndef ROCKSDB_LITE
 TEST_F(DBRangeDelTest, NonBlockBasedTableNotSupported) {
-  // TODO: figure out why MmapReads trips the iterator pinning assertion in
-  // RangeDelAggregator. Ideally it would be supported; otherwise it should at
-  // least be explicitly unsupported.
-  for (auto config : {kPlainTableAllBytesPrefix, /* kWalDirAndMmapReads */}) {
+  for (auto config : {kPlainTableAllBytesPrefix, kWalDirAndMmapReads}) {
     option_config_ = config;
     DestroyAndReopen(CurrentOptions());
     ASSERT_TRUE(
