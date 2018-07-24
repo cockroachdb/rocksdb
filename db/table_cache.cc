@@ -231,7 +231,7 @@ InternalIterator* TableCache::NewIterator(
       result = NewEmptyInternalIterator(arena);
     } else {
       result = table_reader->NewIterator(
-          options, range_del_agg, nullptr /* file_meta */,
+          options, range_del_agg, &file_meta,
           arena, skip_filters);
     }
     if (create_new_table_reader) {

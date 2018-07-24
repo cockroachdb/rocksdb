@@ -37,6 +37,7 @@ class ForwardLevelIterator : public InternalIterator {
       : cfd_(cfd),
         read_options_(read_options),
         files_(files),
+        range_del_agg_(cfd->internal_comparator(), {} /* snapshots */),
         valid_(false),
         file_index_(std::numeric_limits<uint32_t>::max()),
         file_iter_(nullptr),
@@ -69,15 +70,13 @@ class ForwardLevelIterator : public InternalIterator {
       delete file_iter_;
     }
 
-    RangeDelAggregator range_del_agg(
-        cfd_->internal_comparator(), {} /* snapshots */);
     file_iter_ = cfd_->table_cache()->NewIterator(
         read_options_, *(cfd_->soptions()), cfd_->internal_comparator(),
         *files_[file_index_],
-        read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
+        read_options_.ignore_range_deletions ? nullptr : &range_del_agg_,
         nullptr /* table_reader_ptr */, nullptr, false);
     file_iter_->SetPinnedItersMgr(pinned_iters_mgr_);
-    if (!range_del_agg.IsEmpty()) {
+    if (!range_del_agg_.IsEmpty()) {
       status_ = Status::NotSupported(
           "Range tombstones unsupported with ForwardIterator");
       valid_ = false;
@@ -159,6 +158,7 @@ class ForwardLevelIterator : public InternalIterator {
   const ColumnFamilyData* const cfd_;
   const ReadOptions& read_options_;
   const std::vector<FileMetaData*>& files_;
+  RangeDelAggregator range_del_agg_;
 
   bool valid_;
   uint32_t file_index_;
@@ -176,6 +176,7 @@ ForwardIterator::ForwardIterator(DBImpl* db, const ReadOptions& read_options,
       prefix_extractor_(cfd->ioptions()->prefix_extractor),
       user_comparator_(cfd->user_comparator()),
       immutable_min_heap_(MinIterComparator(&cfd_->internal_comparator())),
+      range_del_agg_(cfd->internal_comparator(), {} /* snapshots */),
       sv_(current_sv),
       mutable_iter_(nullptr),
       current_(nullptr),
@@ -585,16 +586,14 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
     // New
     sv_ = cfd_->GetReferencedSuperVersion(&(db_->mutex_));
   }
-  RangeDelAggregator range_del_agg(
-      cfd_->internal_comparator(), {} /* snapshots */);
   mutable_iter_ = sv_->mem->NewIterator(read_options_, &arena_);
   sv_->imm->AddIterators(read_options_, &imm_iters_, &arena_);
   if (!read_options_.ignore_range_deletions) {
     std::unique_ptr<InternalIterator> range_del_iter(
         sv_->mem->NewRangeTombstoneIterator(read_options_));
-    range_del_agg.AddTombstones(std::move(range_del_iter));
+    range_del_agg_.AddTombstones(std::move(range_del_iter));
     sv_->imm->AddRangeTombstoneIterators(read_options_, &arena_,
-                                         &range_del_agg);
+                                         &range_del_agg_);
   }
   has_iter_trimmed_for_upper_bound_ = false;
 
@@ -611,14 +610,14 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
     }
     l0_iters_.push_back(cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(), *l0,
-        read_options_.ignore_range_deletions ? nullptr : &range_del_agg));
+        read_options_.ignore_range_deletions ? nullptr : &range_del_agg_));
   }
   BuildLevelIterators(vstorage);
   current_ = nullptr;
   is_prev_set_ = false;
 
   UpdateChildrenPinnedItersMgr();
-  if (!range_del_agg.IsEmpty()) {
+  if (!range_del_agg_.IsEmpty()) {
     status_ = Status::NotSupported(
         "Range tombstones unsupported with ForwardIterator");
     valid_ = false;
@@ -640,14 +639,12 @@ void ForwardIterator::RenewIterators() {
 
   mutable_iter_ = svnew->mem->NewIterator(read_options_, &arena_);
   svnew->imm->AddIterators(read_options_, &imm_iters_, &arena_);
-  RangeDelAggregator range_del_agg(
-      cfd_->internal_comparator(), {} /* snapshots */);
   if (!read_options_.ignore_range_deletions) {
     std::unique_ptr<InternalIterator> range_del_iter(
         svnew->mem->NewRangeTombstoneIterator(read_options_));
-    range_del_agg.AddTombstones(std::move(range_del_iter));
+    range_del_agg_.AddTombstones(std::move(range_del_iter));
     svnew->imm->AddRangeTombstoneIterators(read_options_, &arena_,
-                                           &range_del_agg);
+                                           &range_del_agg_);
   }
 
   const auto* vstorage = sv_->current->storage_info();
@@ -681,7 +678,7 @@ void ForwardIterator::RenewIterators() {
     l0_iters_new.push_back(cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
         *l0_files_new[inew],
-        read_options_.ignore_range_deletions ? nullptr : &range_del_agg));
+        read_options_.ignore_range_deletions ? nullptr : &range_del_agg_));
   }
 
   for (auto* f : l0_iters_) {
@@ -701,7 +698,7 @@ void ForwardIterator::RenewIterators() {
   sv_ = svnew;
 
   UpdateChildrenPinnedItersMgr();
-  if (!range_del_agg.IsEmpty()) {
+  if (!range_del_agg_.IsEmpty()) {
     status_ = Status::NotSupported(
         "Range tombstones unsupported with ForwardIterator");
     valid_ = false;

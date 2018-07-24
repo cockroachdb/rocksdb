@@ -316,8 +316,6 @@ TEST_F(DBRangeDelTest, CompactionRemovesCoveredKeys) {
   db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
   ASSERT_GT(NumTableFilesAtLevel(1), 0);
-  ASSERT_EQ((kNumFiles - 1) * kNumPerFile / 2,
-            TestGetTickerCount(opts, COMPACTION_KEY_DROP_RANGE_DEL));
 
   for (int i = 0; i < kNumFiles; ++i) {
     for (int j = 0; j < kNumPerFile; ++j) {
@@ -831,6 +829,61 @@ TEST_F(DBRangeDelTest, IteratorCoveredSst) {
   ASSERT_EQ(0, count);
   delete iter;
 }
+
+TEST_F(DBRangeDelTest, IteratorRangeTombstoneCoversSstableEndpoints) {
+  db_->Put(WriteOptions(), "", "1");
+  db_->Put(WriteOptions(), "a", "2");
+  db_->Put(WriteOptions(), "b", "3");
+  ASSERT_OK(db_->Flush(FlushOptions()));
+  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(), "", "a"));
+  ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(), "b", "c"));
+
+  ReadOptions read_opts;
+  auto* iter = db_->NewIterator(read_opts);
+
+  int count = 0;
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    ASSERT_EQ("a", iter->key());
+    ++count;
+  }
+  delete iter;
+
+  ASSERT_EQ(1, count);
+}
+
+TEST_F(DBRangeDelTest, IteratorRangeTombstoneCoversSstableEndpointsCustomComparator) {
+  Options options = CurrentOptions();
+  options.comparator = ReverseBytewiseComparator();
+  DestroyAndReopen(options);
+
+  db_->Put(WriteOptions(), "", "1");
+  db_->Put(WriteOptions(), "a", "2");
+  db_->Put(WriteOptions(), "b", "3");
+  ASSERT_OK(db_->Flush(FlushOptions()));
+  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(), "a", ""));
+  ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(), "b", "a"));
+
+  ReadOptions read_opts;
+  auto* iter = db_->NewIterator(read_opts);
+
+  int count = 0;
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    ASSERT_EQ("", iter->key());
+    ++count;
+  }
+  delete iter;
+
+  ASSERT_EQ(1, count);
+}
+
+// TODO(peter): Add testing of the range tombstone skipping code in
+// BlockBasedTableIterator. Need to test both Seek, SeekForPrev, Next
+// and Prev. Verify behavior when the tombstone overlaps the start of
+// the sstable, the end of the sstable, or is contained within the
+// sstable. Need a test harness for easily constructing scenarios and
+// running them.
 
 #ifndef ROCKSDB_UBSAN_RUN
 TEST_F(DBRangeDelTest, TailingIteratorRangeTombstoneUnsupported) {
