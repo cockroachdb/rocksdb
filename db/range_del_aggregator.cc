@@ -77,14 +77,14 @@ class UncollapsedRangeDelMap : public RangeDelMap {
     return false;
   }
 
-  std::pair<RangePtr,SequenceNumber> GetTombstone(
-      const Slice& user_key, SequenceNumber seqno) {
+  PartialRangeTombstone GetTombstone(const Slice& user_key,
+                                     SequenceNumber seqno) {
     // Unimplemented, though the lack of implementation only affects
     // performance (not correctness) for sstable ingestion. Normal
     // read operations use a CollapsedRangeDelMap.
     (void)user_key;
     (void)seqno;
-    return std::make_pair(RangePtr(), 0);
+    return PartialRangeTombstone();
   }
 
   bool IsRangeOverlapped(const Slice& start, const Slice& end) {
@@ -286,24 +286,24 @@ class CollapsedRangeDelMap : public RangeDelMap {
     return false;
   }
 
-  std::pair<RangePtr,SequenceNumber> GetTombstone(
-      const Slice& user_key, SequenceNumber seqno) {
+  PartialRangeTombstone GetTombstone(const Slice& user_key,
+                                     SequenceNumber seqno) {
     auto iter = rep_.upper_bound(user_key);
     if (iter == rep_.begin()) {
       // before start of deletion intervals
-      return std::make_pair(RangePtr(nullptr, &iter->first), 0);
+      return PartialRangeTombstone(nullptr, &iter->first, 0);
     }
     auto prev = iter;
     --prev;
     if (iter == rep_.end()) {
       // after end of deletion intervals
-      return std::make_pair(RangePtr(&prev->first, nullptr), 0);
+      return PartialRangeTombstone(&prev->first, nullptr, 0);
     }
     // Note that a range tombstone does not cover a key at the same sequence
     // number. This can occur in an sstable that has been ingested where all
     // of the entries have the same sequence number.
-    return std::make_pair(RangePtr(&prev->first, &iter->first),
-                          prev->second > seqno ? prev->second : 0);
+    return PartialRangeTombstone(&prev->first, &iter->first,
+                                 prev->second > seqno ? prev->second : 0);
   }
 
   bool IsRangeOverlapped(const Slice&, const Slice&) {
@@ -508,14 +508,14 @@ bool RangeDelAggregator::ShouldDeleteRange(
   return tombstone_map.ShouldDeleteRange(start, end, seqno);
 }
 
-std::pair<RangePtr,SequenceNumber> RangeDelAggregator::GetTombstone(
-    const Slice& user_key, SequenceNumber seqno) {
+PartialRangeTombstone RangeDelAggregator::GetTombstone(const Slice& user_key,
+                                                       SequenceNumber seqno) {
   if (rep_ == nullptr) {
-    return std::make_pair(RangePtr(), 0);
+    return PartialRangeTombstone();
   }
   auto& tombstone_map = GetRangeDelMap(seqno);
   if (tombstone_map.IsEmpty()) {
-    return std::make_pair(RangePtr(), 0);
+    return PartialRangeTombstone();
   }
   return tombstone_map.GetTombstone(user_key, seqno);
 }

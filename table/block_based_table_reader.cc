@@ -1789,7 +1789,7 @@ void BlockBasedTableIterator::Seek(const Slice& const_target) {
   // Before we seek the iterator, find the next non-deleted key.
   InitRangeTombstone(ExtractUserKey(target));
   std::string tmp_target;
-  if (range_tombstone_seq_ > 0) {
+  if (range_tombstone_.seq() > 0) {
     tmp_target = tombstone_internal_end_key();
     target = tmp_target;
   }
@@ -1822,7 +1822,7 @@ void BlockBasedTableIterator::SeekForPrev(const Slice& const_target) {
   // Before we seek the iterator, find the previous non-deleted key.
   InitRangeTombstone(ExtractUserKey(target));
   std::string tmp_target;
-  if (range_tombstone_seq_ > 0) {
+  if (range_tombstone_.seq() > 0) {
     tmp_target = tombstone_internal_start_key();
     target = tmp_target;
   }
@@ -1995,9 +1995,9 @@ void BlockBasedTableIterator::FindKeyForward() {
     // tombstone. Note that range_tombstone_ is not a raw range tombstone
     // returned from RangeDelAggregator, but a cooked one. See
     // InitRangeTombstone().
-    if (range_tombstone_end_ == nullptr) {
+    if (range_tombstone_.end_key() == nullptr) {
       // The range tombstone extends to the end of the sstable.
-      if (range_tombstone_seq_ == 0) {
+      if (range_tombstone_.seq() == 0) {
         // The range tombstone doesn't apply to the keys in the sstable. Return
         // the entry.
         return;
@@ -2007,7 +2007,8 @@ void BlockBasedTableIterator::FindKeyForward() {
     }
 
     auto ukey = user_key();
-    if (icomp_.user_comparator()->Compare(ukey, *range_tombstone_end_) >= 0) {
+    if (icomp_.user_comparator()->Compare(ukey, *range_tombstone_.end_key()) >=
+        0) {
       // The key is past the tombstone. Grab the tombstone covering the
       // current key. The new tombstone might cover the existing key, so loop
       // so that we can have the proper check for whether the tombstone covers
@@ -2016,7 +2017,7 @@ void BlockBasedTableIterator::FindKeyForward() {
       continue;
     }
     // The key is contained within the current tombstone.
-    if (range_tombstone_seq_ == 0) {
+    if (range_tombstone_.seq() == 0) {
       // The tombstone doesn't apply to the sstable. Return the entry.
       return;
     }
@@ -2068,9 +2069,9 @@ void BlockBasedTableIterator::FindKeyBackward() {
     // tombstone. Note that range_tombstone_ is not a raw range tombstone
     // returned from RangeDelAggregator, but a cooked one. See
     // InitRangeTombstone().
-    if (range_tombstone_start_ == nullptr) {
+    if (range_tombstone_.start_key() == nullptr) {
       // The range tombstone extends to the beginning of the sstable.
-      if (range_tombstone_seq_ == 0) {
+      if (range_tombstone_.seq() == 0) {
         // The range doesn't apply to the keys in the sstable. Return the
         // entry.
         return;
@@ -2081,7 +2082,8 @@ void BlockBasedTableIterator::FindKeyBackward() {
     }
 
     auto ukey = user_key();
-    if (icomp_.user_comparator()->Compare(ukey, *range_tombstone_start_) < 0) {
+    if (icomp_.user_comparator()->Compare(ukey, *range_tombstone_.start_key()) <
+        0) {
       // The key is past the tombstone. Grab the tombstone covering the
       // current key. The new tombstone might cover the existing key, so loop
       // so that we can have the proper check for whether the tombstone covers
@@ -2090,7 +2092,7 @@ void BlockBasedTableIterator::FindKeyBackward() {
       continue;
     }
     // The key is contained within the current tombstone.
-    if (range_tombstone_seq_ == 0) {
+    if (range_tombstone_.seq() == 0) {
       // The tombstone doesn't apply to the sstable. Return the entry.
       return;
     }
@@ -2118,37 +2120,34 @@ void BlockBasedTableIterator::InitRangeTombstone(const Slice& target) {
     return;
   }
 
-  auto tombstone = range_del_agg_->GetTombstone(target, file_meta_->largest_seqno);
-  range_tombstone_start_ = tombstone.first.start;
-  range_tombstone_end_ = tombstone.first.limit;
-  range_tombstone_seq_ = tombstone.second;
+  range_tombstone_ = range_del_agg_->GetTombstone(target, file_meta_->largest_seqno);
 
   // Clear the start key if it is less than the smallest key in the
   // sstable. This allows us to avoid comparisons during Prev() in the common
   // case.
-  if (range_tombstone_start_ != nullptr &&
-      icomp_.user_comparator()->Compare(
-          *range_tombstone_start_, file_meta_->smallest.user_key()) < 0) {
-    range_tombstone_start_ = nullptr;
+  if (range_tombstone_.start_key() != nullptr &&
+      icomp_.user_comparator()->Compare(*range_tombstone_.start_key(),
+                                        file_meta_->smallest.user_key()) < 0) {
+    range_tombstone_.SetStartKey(nullptr);
   }
   // Clear the end key if it is larger than the largest key in the
   // sstable. This allows us to avoid comparisons during Next() in the common
   // case.
-  if (range_tombstone_end_ != nullptr &&
-      icomp_.user_comparator()->Compare(
-          *range_tombstone_end_, file_meta_->largest.user_key()) > 0) {
-    range_tombstone_end_ = nullptr;
+  if (range_tombstone_.end_key() != nullptr &&
+      icomp_.user_comparator()->Compare(*range_tombstone_.end_key(),
+                                        file_meta_->largest.user_key()) > 0) {
+    range_tombstone_.SetEndKey(nullptr);
   }
 }
 
 std::string BlockBasedTableIterator::tombstone_internal_start_key() const {
   std::string internal_key;
-  if (range_tombstone_start_ == nullptr) {
-    AppendInternalKey(&internal_key, {
-        file_meta_->smallest.user_key(), range_tombstone_seq_, kTypeValue});
+  if (range_tombstone_.start_key() == nullptr) {
+    AppendInternalKey(&internal_key, {file_meta_->smallest.user_key(),
+                                      range_tombstone_.seq(), kTypeValue});
   } else {
-    AppendInternalKey(&internal_key, {
-        *range_tombstone_start_, range_tombstone_seq_, kTypeValue});
+    AppendInternalKey(&internal_key, {*range_tombstone_.start_key(),
+                                      range_tombstone_.seq(), kTypeValue});
   }
   return internal_key;
 }
@@ -2160,12 +2159,12 @@ std::string BlockBasedTableIterator::tombstone_internal_end_key() const {
   // kMaxSequenceNumber ensures we'll seek to a version of the key that is
   // more recent than the tombstone. Note that the tombstone end-key is
   // exclusive, so the tombstone doesn't apply to the end-key in any case.
-  if (range_tombstone_end_ == nullptr) {
-    AppendInternalKey(&internal_key, {
-        file_meta_->largest.user_key(), kMaxSequenceNumber, kTypeValue});
+  if (range_tombstone_.end_key() == nullptr) {
+    AppendInternalKey(&internal_key, {file_meta_->largest.user_key(),
+                                      kMaxSequenceNumber, kTypeValue});
   } else {
-    AppendInternalKey(&internal_key, {
-        *range_tombstone_end_, kMaxSequenceNumber, kTypeValue});
+    AppendInternalKey(&internal_key, {*range_tombstone_.end_key(),
+                                      kMaxSequenceNumber, kTypeValue});
   }
   return internal_key;
 }

@@ -63,8 +63,8 @@ class RangeDelMap {
                             RangeDelPositioningMode mode) = 0;
   virtual bool ShouldDeleteRange(const Slice& start, const Slice& end,
                                  SequenceNumber seqno) = 0;
-  virtual std::pair<RangePtr,SequenceNumber> GetTombstone(
-      const Slice& user_key, SequenceNumber seqno) = 0;
+  virtual PartialRangeTombstone GetTombstone(const Slice& user_key,
+                                             SequenceNumber seqno) = 0;
   virtual bool IsRangeOverlapped(const Slice& start, const Slice& end) = 0;
   virtual void InvalidatePosition() = 0;
 
@@ -142,8 +142,8 @@ class RangeDelAggregator {
   // valid tombstone is always returned, though it may cover an empty range of
   // keys or the sequence number may be 0 to indicate that no tombstone covers
   // the specified key.
-  std::pair<RangePtr,SequenceNumber> GetTombstone(const Slice& user_key,
-                                                  SequenceNumber seqno);
+  PartialRangeTombstone GetTombstone(const Slice& user_key,
+                                     SequenceNumber seqno);
 
   // Checks whether range deletions cover any keys between `start` and `end`,
   // inclusive.

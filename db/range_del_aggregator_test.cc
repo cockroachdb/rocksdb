@@ -56,6 +56,21 @@ void VerifyTombstonesEq(const RangeTombstone& a, const RangeTombstone& b) {
   ASSERT_EQ(a.end_key_, b.end_key_);
 }
 
+void VerifyPartialTombstonesEq(const PartialRangeTombstone& a,
+                               const PartialRangeTombstone& b) {
+  ASSERT_EQ(a.seq(), b.seq());
+  if (a.start_key() != nullptr) {
+    ASSERT_EQ(*a.start_key(), *b.start_key());
+  } else {
+    ASSERT_EQ(b.start_key(), nullptr);
+  }
+  if (a.end_key() != nullptr) {
+    ASSERT_EQ(*a.end_key(), *b.end_key());
+  } else {
+    ASSERT_EQ(b.end_key(), nullptr);
+  }
+}
+
 void VerifyRangeDelIter(
     RangeDelIterator* range_del_iter,
     const std::vector<RangeTombstone>& expected_range_dels) {
@@ -160,7 +175,7 @@ bool ShouldDeleteRange(const std::vector<RangeTombstone>& range_dels,
 
 void VerifyGetTombstone(const std::vector<RangeTombstone>& range_dels,
                         const ExpectedPoint& expected_point,
-                        const RangeTombstone& expected_tombstone) {
+                        const PartialRangeTombstone& expected_tombstone) {
   RangeDelAggregator range_del_agg(icmp, {} /* snapshots */, true);
   ASSERT_TRUE(range_del_agg.IsEmpty());
   std::vector<std::string> keys, values;
@@ -174,11 +189,7 @@ void VerifyGetTombstone(const std::vector<RangeTombstone>& range_dels,
   range_del_agg.AddTombstones(std::move(range_del_iter));
 
   auto tombstone = range_del_agg.GetTombstone(expected_point.begin, expected_point.seq);
-  auto start = tombstone.first.start ? tombstone.first.start->ToString() : "";
-  auto end = tombstone.first.limit ? tombstone.first.limit->ToString() : "";
-  ASSERT_EQ(expected_tombstone.start_key_.ToString(), start);
-  ASSERT_EQ(expected_tombstone.end_key_.ToString(), end);
-  ASSERT_EQ(expected_tombstone.seq_, tombstone.second);
+  VerifyPartialTombstonesEq(expected_tombstone, tombstone);
 }
 
 }  // anonymous namespace
@@ -372,46 +383,37 @@ TEST_F(RangeDelAggregatorTest, ShouldDeleteRange) {
 }
 
 TEST_F(RangeDelAggregatorTest, GetTombstone) {
-  VerifyGetTombstone(
-      {{"b", "d", 10}},
-      {"b", 9},
-      {"b", "d", 10});
-  VerifyGetTombstone(
-      {{"b", "d", 10}},
-      {"b", 10},
-      {"b", "d", 0});
-  VerifyGetTombstone(
-      {{"b", "d", 10}},
-      {"b", 20},
-      {"b", "d", 0});
-  VerifyGetTombstone(
-      {{"b", "d", 10}},
-      {"a", 9},
-      {"", "b", 0});
-  VerifyGetTombstone(
-      {{"b", "d", 10}},
-      {"d", 9},
-      {"d", "", 0});
-  VerifyGetTombstone(
-      {{"a", "c", 10}, {"e", "h", 20}},
-      {"d", 9},
-      {"c", "e", 0});
-  VerifyGetTombstone(
-      {{"a", "c", 10}, {"e", "h", 20}},
-      {"b", 9},
-      {"a", "c", 10});
-  VerifyGetTombstone(
-      {{"a", "c", 10}, {"e", "h", 20}},
-      {"b", 10},
-      {"a", "c", 0});
-  VerifyGetTombstone(
-      {{"a", "c", 10}, {"e", "h", 20}},
-      {"e", 19},
-      {"e", "h", 20});
-  VerifyGetTombstone(
-      {{"a", "c", 10}, {"e", "h", 20}},
-      {"e", 20},
-      {"e", "h", 0});
+  Slice a = "a", b = "b", c = "c", d = "d", e = "e", h = "h";
+  VerifyGetTombstone({{"b", "d", 10}}, {"b", 9},
+                     PartialRangeTombstone(&b, &d, 10));
+  VerifyGetTombstone({{"b", "d", 10}}, {"b", 10},
+                     PartialRangeTombstone(&b, &d, 0));
+  VerifyGetTombstone({{"b", "d", 10}}, {"b", 20},
+                     PartialRangeTombstone(&b, &d, 0));
+  VerifyGetTombstone({{"b", "d", 10}}, {"a", 9},
+                     PartialRangeTombstone(nullptr, &b, 0));
+  VerifyGetTombstone({{"b", "d", 10}}, {"d", 9},
+                     PartialRangeTombstone(&d, nullptr, 0));
+  VerifyGetTombstone({{"a", "c", 10}, {"e", "h", 20}}, {"d", 9},
+                     PartialRangeTombstone(&c, &e, 0));
+  VerifyGetTombstone({{"a", "c", 10}, {"e", "h", 20}}, {"b", 9},
+                     PartialRangeTombstone(&a, &c, 10));
+  VerifyGetTombstone({{"a", "c", 10}, {"e", "h", 20}}, {"b", 10},
+                     PartialRangeTombstone(&a, &c, 0));
+  VerifyGetTombstone({{"a", "c", 10}, {"e", "h", 20}}, {"e", 19},
+                     PartialRangeTombstone(&e, &h, 20));
+  VerifyGetTombstone({{"a", "c", 10}, {"e", "h", 20}}, {"e", 20},
+                     PartialRangeTombstone(&e, &h, 0));
+}
+
+TEST_F(RangeDelAggregatorTest, AddGetTombstoneInterleaved) {
+  RangeDelAggregator range_del_agg(icmp, {} /* snapshots */,
+                                   true /* collapsed */);
+  AddTombstones(&range_del_agg, {{"b", "c", 10}});
+  auto tombstone = range_del_agg.GetTombstone("b", 5);
+  AddTombstones(&range_del_agg, {{"a", "d", 20}});
+  Slice b = "b", c = "c";
+  VerifyPartialTombstonesEq(PartialRangeTombstone(&b, &c, 10), tombstone);
 }
 
 TEST_F(RangeDelAggregatorTest, TruncateTombstones) {

@@ -617,4 +617,47 @@ struct RangeTombstone {
   }
 };
 
+struct PartialRangeTombstone {
+  PartialRangeTombstone()
+      : start_key_valid_(false), end_key_valid_(false), seq_(0) {}
+
+  PartialRangeTombstone(const Slice* start_key, const Slice* end_key,
+                        SequenceNumber seq)
+      : seq_(seq) {
+    SetStartKey(start_key);
+    SetEndKey(end_key);
+  }
+
+  void SetStartKey(const Slice* start_key) {
+    if (start_key != nullptr) {
+      start_key_ = *start_key;
+      start_key_valid_ = true;
+    } else {
+      start_key_valid_ = false;
+    }
+  }
+
+  void SetEndKey(const Slice* end_key) {
+    if (end_key != nullptr) {
+      end_key_ = *end_key;
+      end_key_valid_ = true;
+    } else {
+      end_key_valid_ = false;
+    }
+  }
+
+  const Slice* start_key() const {
+    return start_key_valid_ ? &start_key_ : nullptr;
+  }
+  const Slice* end_key() const { return end_key_valid_ ? &end_key_ : nullptr; }
+  SequenceNumber seq() const { return seq_; }
+
+ private:
+  Slice start_key_;
+  Slice end_key_;
+  bool start_key_valid_;
+  bool end_key_valid_;
+  SequenceNumber seq_;
+};
+
 }  // namespace rocksdb
