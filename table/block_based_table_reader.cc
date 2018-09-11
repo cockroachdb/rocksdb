@@ -2023,6 +2023,7 @@ void BlockBasedTableIterator::FindKeyForward() {
     }
 
     // Find the next non-deleted key.
+    SavePrevIndexValue();
     index_iter_->Seek(tombstone_internal_end_key());
     if (!index_iter_->Valid()) {
       ResetDataIter();

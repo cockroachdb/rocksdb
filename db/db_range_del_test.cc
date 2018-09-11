@@ -927,6 +927,40 @@ TEST_F(DBRangeDelTest, IteratorRangeTombstoneOverlapsSstable) {
   }
 }
 
+TEST_F(DBRangeDelTest, IteratorRangeTombstoneMultipleBlocks) {
+  Options options = CurrentOptions();
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 1;  // every key gets its own block
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+  Reopen(options);
+
+  db_->Put(WriteOptions(), "0", "");
+  db_->Put(WriteOptions(), "a", "");
+  db_->Put(WriteOptions(), "b", "");
+  db_->Put(WriteOptions(), "c", "");
+  db_->Put(WriteOptions(), "d", "");
+
+  ASSERT_OK(db_->Flush(FlushOptions()));
+  db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+
+  db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(), "b", "c");
+
+  unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
+  iter->Seek("c");
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ("c", iter->key());
+  iter->Seek("a");
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ("a", iter->key());
+  iter->Next();
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ("c", iter->key());
+
+  // TODO(benesch): tickle this bug during reverse iteration. Try as I might I
+  // can't come up with a failing test case. Maybe reverse iteration doesn't
+  // actually have this bug?
+}
+
 #ifndef ROCKSDB_UBSAN_RUN
 TEST_F(DBRangeDelTest, TailingIteratorRangeTombstoneUnsupported) {
   db_->Put(WriteOptions(), "key", "val");
