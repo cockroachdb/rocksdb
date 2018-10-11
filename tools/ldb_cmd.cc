@@ -3047,8 +3047,7 @@ IngestExternalSstFilesCommand::IngestExternalSstFilesCommand(
       snapshot_consistency_(true),
       allow_global_seqno_(true),
       allow_blocking_flush_(true),
-      ingest_behind_(false),
-      write_global_seqno_(true) {
+      ingest_behind_(false) {
   create_if_missing_ =
       IsFlagPresent(flags, ARG_CREATE_IF_MISSING) ||
       ParseBooleanOption(options, ARG_CREATE_IF_MISSING, false);
@@ -3106,7 +3105,6 @@ void IngestExternalSstFilesCommand::DoCommand() {
   ifo.allow_global_seqno = allow_global_seqno_;
   ifo.allow_blocking_flush = allow_blocking_flush_;
   ifo.ingest_behind = ingest_behind_;
-  ifo.write_global_seqno = write_global_seqno_;
   Status status = db_->IngestExternalFile(cfh, {input_sst_path_}, ifo);
   if (!status.ok()) {
     exec_state_ = LDBCommandExecuteResult::Failed(

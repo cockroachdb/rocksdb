@@ -298,17 +298,17 @@ class CollapsedRangeDelMap : public RangeDelMap {
     if (!ParseInternalKey(end, &parsed_end)) {
       assert(false);
     }
-    if (ucmp_->Compare(parsed_start.user_key, parsed_end.user_key) > 0) {
+    if (icmp_->Compare(parsed_start, parsed_end) > 0) {
       return false;
     }
 
-    auto iter = rep_.upper_bound(parsed_start.user_key);
+    auto iter = rep_.upper_bound(parsed_start);
     if (iter == rep_.begin()) {
       // before start of deletion intervals
       return false;
     }
     --iter;
-    if (ucmp_->Compare(parsed_start.user_key, iter->first) < 0) {
+    if (icmp_->Compare(parsed_start, iter->first) < 0) {
       assert(false);
       return false;
     }
@@ -316,7 +316,7 @@ class CollapsedRangeDelMap : public RangeDelMap {
     // number, or we determine that our range is completely covered by newer
     // tombstones.
     for (; iter != rep_.end(); ++iter) {
-      if (ucmp_->Compare(parsed_end.user_key, iter->first) < 0) {
+      if (icmp_->Compare(parsed_end, iter->first) < 0) {
         return true;
       }
       if (seqno >= iter->second) {
@@ -327,9 +327,16 @@ class CollapsedRangeDelMap : public RangeDelMap {
     return false;
   }
 
-  PartialRangeTombstone GetTombstone(const Slice& user_key,
+  PartialRangeTombstone GetTombstone(const Slice& key,
                                      SequenceNumber seqno) override {
-    auto iter = rep_.upper_bound(user_key);
+    ParsedInternalKey parsed_key;
+    if (!ParseInternalKey(key, &parsed_key)) {
+      assert(false);
+      // Fail open.
+      return PartialRangeTombstone();
+    }
+
+    auto iter = rep_.upper_bound(parsed_key);
     if (iter == rep_.begin()) {
       // before start of deletion intervals
       return PartialRangeTombstone(nullptr, &iter->first, 0);
@@ -583,7 +590,7 @@ bool RangeDelAggregator::ShouldDeleteRange(
   return tombstone_map.ShouldDeleteRange(start, end, seqno);
 }
 
-PartialRangeTombstone RangeDelAggregator::GetTombstone(const Slice& user_key,
+PartialRangeTombstone RangeDelAggregator::GetTombstone(const Slice& key,
                                                        SequenceNumber seqno) {
   if (rep_ == nullptr) {
     return PartialRangeTombstone();
@@ -592,7 +599,7 @@ PartialRangeTombstone RangeDelAggregator::GetTombstone(const Slice& user_key,
   if (tombstone_map.IsEmpty()) {
     return PartialRangeTombstone();
   }
-  return tombstone_map.GetTombstone(user_key, seqno);
+  return tombstone_map.GetTombstone(key, seqno);
 }
 
 bool RangeDelAggregator::IsRangeOverlapped(const Slice& start,

@@ -66,12 +66,16 @@ void VerifyPartialTombstonesEq(const PartialRangeTombstone& a,
                                const PartialRangeTombstone& b) {
   ASSERT_EQ(a.seq(), b.seq());
   if (a.start_key() != nullptr) {
-    ASSERT_EQ(*a.start_key(), *b.start_key());
+    ASSERT_EQ(a.start_key()->user_key, b.start_key()->user_key);
+    ASSERT_EQ(a.start_key()->sequence, b.start_key()->sequence);
+    ASSERT_EQ(a.start_key()->type, b.start_key()->type);
   } else {
     ASSERT_EQ(b.start_key(), nullptr);
   }
   if (a.end_key() != nullptr) {
-    ASSERT_EQ(*a.end_key(), *b.end_key());
+    ASSERT_EQ(a.end_key()->user_key, b.end_key()->user_key);
+    ASSERT_EQ(a.end_key()->sequence, b.end_key()->sequence);
+    ASSERT_EQ(a.end_key()->type, b.end_key()->type);
   } else {
     ASSERT_EQ(b.end_key(), nullptr);
   }
@@ -204,7 +208,8 @@ void VerifyGetTombstone(const std::vector<RangeTombstone>& range_dels,
       new test::VectorIterator(keys, values));
   range_del_agg.AddTombstones(std::move(range_del_iter));
 
-  auto tombstone = range_del_agg.GetTombstone(expected_point.begin, expected_point.seq);
+  auto key = InternalKey(expected_point.begin, kMaxSequenceNumber, kTypeValue);
+  auto tombstone = range_del_agg.GetTombstone(key.Encode(), expected_point.seq);
   VerifyPartialTombstonesEq(expected_tombstone, tombstone);
 }
 
@@ -431,7 +436,12 @@ TEST_F(RangeDelAggregatorTest, ShouldDeleteRange) {
 }
 
 TEST_F(RangeDelAggregatorTest, GetTombstone) {
-  Slice a = "a", b = "b", c = "c", d = "d", e = "e", h = "h";
+  ParsedInternalKey a = {"a", kMaxSequenceNumber, kMaxValue};
+  ParsedInternalKey b = {"b", kMaxSequenceNumber, kMaxValue};
+  ParsedInternalKey c = {"c", kMaxSequenceNumber, kMaxValue};
+  ParsedInternalKey d = {"d", kMaxSequenceNumber, kMaxValue};
+  ParsedInternalKey e = {"e", kMaxSequenceNumber, kMaxValue};
+  ParsedInternalKey h = {"h", kMaxSequenceNumber, kMaxValue};
   VerifyGetTombstone({{"b", "d", 10}}, {"b", 9},
                      PartialRangeTombstone(&b, &d, 10));
   VerifyGetTombstone({{"b", "d", 10}}, {"b", 10},
@@ -458,9 +468,11 @@ TEST_F(RangeDelAggregatorTest, AddGetTombstoneInterleaved) {
   RangeDelAggregator range_del_agg(bytewise_icmp, {} /* snapshots */,
                                    true /* collapsed */);
   AddTombstones(&range_del_agg, {{"b", "c", 10}});
-  auto tombstone = range_del_agg.GetTombstone("b", 5);
+  auto key = InternalKey("b", kMaxSequenceNumber, kTypeValue);
+  auto tombstone = range_del_agg.GetTombstone(key.Encode(), 5);
   AddTombstones(&range_del_agg, {{"a", "d", 20}});
-  Slice b = "b", c = "c";
+  ParsedInternalKey b = {"b", kMaxSequenceNumber, kMaxValue};
+  ParsedInternalKey c {"c", kMaxSequenceNumber, kMaxValue};
   VerifyPartialTombstonesEq(PartialRangeTombstone(&b, &c, 10), tombstone);
 }
 

@@ -635,13 +635,15 @@ class PartialRangeTombstone {
   PartialRangeTombstone()
       : start_key_valid_(false), end_key_valid_(false), seq_(0) {}
 
-  PartialRangeTombstone(const Slice* sk, const Slice* ek, SequenceNumber sq)
+  PartialRangeTombstone(const ParsedInternalKey* sk,
+                        const ParsedInternalKey* ek,
+                        SequenceNumber sq)
       : seq_(sq) {
     SetStartKey(sk);
     SetEndKey(ek);
   }
 
-  void SetStartKey(const Slice* sk) {
+  void SetStartKey(const ParsedInternalKey* sk) {
     if (sk != nullptr) {
       start_key_ = *sk;
       start_key_valid_ = true;
@@ -650,7 +652,7 @@ class PartialRangeTombstone {
     }
   }
 
-  void SetEndKey(const Slice* ek) {
+  void SetEndKey(const ParsedInternalKey* ek) {
     if (ek != nullptr) {
       end_key_ = *ek;
       end_key_valid_ = true;
@@ -659,15 +661,15 @@ class PartialRangeTombstone {
     }
   }
 
-  const Slice* start_key() const {
+  const ParsedInternalKey* start_key() const {
     return start_key_valid_ ? &start_key_ : nullptr;
   }
-  const Slice* end_key() const { return end_key_valid_ ? &end_key_ : nullptr; }
+  const ParsedInternalKey* end_key() const { return end_key_valid_ ? &end_key_ : nullptr; }
   SequenceNumber seq() const { return seq_; }
 
  private:
-  Slice start_key_;
-  Slice end_key_;
+  ParsedInternalKey start_key_;
+  ParsedInternalKey end_key_;
   bool start_key_valid_;
   bool end_key_valid_;
   SequenceNumber seq_;
