@@ -7,6 +7,9 @@
 * When user uses options.force_consistency_check in RocksDb, instead of crashing the process, we now pass the error back to the users without killing the process.
 * Add a new table property, "rocksdb.num.range-deletions", which counts the number of range deletion tombstones in the table.
 
+### Bug Fixes
+* Fix the bug where user comparator was sometimes fed with InternalKey instead of the user key. The bug manifests when during GenerateBottommostFiles.
+
 ## 5.13.4 (6/12/2018)
 ### Bug Fixes
 * Fix regression bug of Prev() with ReadOptions.iterate_upper_bound.
