@@ -3,6 +3,7 @@
 ### Public API Change
 ### New Features
 ### Bug Fixes
+* Fix the bug where user comparator was sometimes fed with InternalKey instead of the user key. The bug manifests when during GenerateBottommostFiles.
 
 ## 5.9.0 (11/1/2017)
 ### Public API Change
