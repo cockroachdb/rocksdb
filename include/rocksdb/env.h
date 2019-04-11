@@ -88,6 +88,23 @@ struct EnvOptions {
   // Default: 0
   uint64_t bytes_per_sync = 0;
 
+  // When true, guarantees the file has at most `bytes_per_sync` bytes submitted
+  // for writeback at any given time.
+  //
+  //  - If `sync_file_range` is supported it achieves this by waiting for any
+  //    prior `sync_file_range`s to finish before proceeding. In this way,
+  //    processing (compression, etc.) can proceed uninhibited in the gap
+  //    between `sync_file_range`s, and we block only when I/O falls behind.
+  //  - Otherwise the `WritableFile::Sync` method is used. Note this mechanism
+  //    always blocks, thus preventing the interleaving of I/O and processing.
+  //
+  // Note: Enabling this option does not provide any additional persistence
+  // guarantees, as it may use `sync_file_range`, which does not write out
+  // metadata.
+  //
+  // Default: false
+  bool strict_bytes_per_sync = false;
+
   // If true, we will preallocate the file with FALLOC_FL_KEEP_SIZE flag, which
   // means that file size won't change as part of preallocation.
   // If false, preallocation will also change the file size. This option will
@@ -624,8 +641,16 @@ class WritableFile {
     : last_preallocated_block_(0),
       preallocation_block_size_(0),
       io_priority_(Env::IO_TOTAL),
-      write_hint_(Env::WLTH_NOT_SET) {
-  }
+      write_hint_(Env::WLTH_NOT_SET),
+      strict_bytes_per_sync_(false) {}
+
+  explicit WritableFile(const EnvOptions& options)
+      : last_preallocated_block_(0),
+        preallocation_block_size_(0),
+        io_priority_(Env::IO_TOTAL),
+        write_hint_(Env::WLTH_NOT_SET),
+        strict_bytes_per_sync_(options.strict_bytes_per_sync) {}
+
   virtual ~WritableFile();
 
   // Append data to the end of the file
@@ -747,6 +772,9 @@ class WritableFile {
   // without waiting for completion.
   // Default implementation does nothing.
   virtual Status RangeSync(uint64_t /*offset*/, uint64_t /*nbytes*/) {
+    if (strict_bytes_per_sync_) {
+      return Sync();
+    }
     return Status::OK();
   }
 
@@ -795,6 +823,7 @@ class WritableFile {
 
   Env::IOPriority io_priority_;
   Env::WriteLifeTimeHint write_hint_;
+  const bool strict_bytes_per_sync_;
 };
 
 // A file abstraction for random reading and writing.
