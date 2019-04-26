@@ -33,6 +33,9 @@ namespace rocksdb {
 // * merge_operator
 // * compaction_filter
 //
+// User can choose to load customized env through object registry:
+// * env needs to be registered through Registrar<Env>
+//
 // For table_factory, this function further supports deserializing
 // BlockBasedTableFactory and its BlockBasedTableOptions except the
 // pointer options of BlockBasedTableOptions (flush_block_policy_factory,

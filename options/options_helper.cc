@@ -19,6 +19,7 @@
 #include "rocksdb/rate_limiter.h"
 #include "rocksdb/slice_transform.h"
 #include "rocksdb/table.h"
+#include "rocksdb/utilities/object_registry.h"
 #include "table/block_based_table_factory.h"
 #include "table/plain_table_factory.h"
 #include "util/cast_util.h"
@@ -231,6 +232,8 @@ std::unordered_map<std::string, CompressionType>
         {"kZSTDNotFinalCompression", kZSTDNotFinalCompression},
         {"kDisableCompressionOption", kDisableCompressionOption}};
 #ifndef ROCKSDB_LITE
+
+const std::string kNameEnv = "env";
 
 template <typename T>
 Status GetStringFromStruct(
@@ -1115,6 +1118,14 @@ Status ParseDBOption(const std::string& name,
     if (name == "rate_limiter_bytes_per_sec") {
       new_options->rate_limiter.reset(
           NewGenericRateLimiter(static_cast<int64_t>(ParseUint64(value))));
+    } else if (name == kNameEnv) {
+      // Currently `Env` can be deserialized from object registry only.
+      std::unique_ptr<Env> env_guard;
+      Env* env = NewCustomObject<Env>(value, &env_guard);
+      // Only support static env for now.
+      if (env != nullptr && !env_guard) {
+        new_options->env = env;
+      }
     } else {
       auto iter = db_options_type_info.find(name);
       if (iter == db_options_type_info.end()) {
@@ -1324,7 +1335,6 @@ std::unordered_map<std::string, OptionTypeInfo>
     OptionsHelper::db_options_type_info = {
         /*
          // not yet supported
-          Env* env;
           std::shared_ptr<Cache> row_cache;
           std::shared_ptr<DeleteScheduler> delete_scheduler;
           std::shared_ptr<Logger> info_log;
@@ -1489,8 +1499,8 @@ std::unordered_map<std::string, OptionTypeInfo>
           OptionVerificationType::kNormal, true,
           offsetof(struct MutableDBOptions, wal_bytes_per_sync)}},
         {"strict_bytes_per_sync",
-         {offsetof(struct DBOptions, strict_bytes_per_sync), OptionType::kBoolean,
-          OptionVerificationType::kNormal, true,
+         {offsetof(struct DBOptions, strict_bytes_per_sync),
+          OptionType::kBoolean, OptionVerificationType::kNormal, true,
           offsetof(struct MutableDBOptions, strict_bytes_per_sync)}},
         {"stats_dump_period_sec",
          {offsetof(struct DBOptions, stats_dump_period_sec), OptionType::kUInt,
