@@ -4,6 +4,9 @@
 * Add an option `strict_bytes_per_sync` that causes a file-writing thread to block rather than exceed the limit on bytes pending writeback specified by `bytes_per_sync` or `wal_bytes_per_sync`.
 * When reading from option file/string/map, customized envs can be filled according to object registry.
 
+### Bug Fixes
+* Fix flush's/compaction's merge processing logic which allowed `Put`s covered by range tombstones to reappear. Note `Put`s may exist even if the user only ever called `Merge()` due to an internal conversion during compaction to the bottommost level.
+
 # 5.17.2 (10/24/2018)
 ### Bug Fixes
 * Fix the bug that WriteBatchWithIndex's SeekForPrev() doesn't see the entries with the same key.
