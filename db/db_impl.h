@@ -1108,6 +1108,8 @@ class DBImpl : public DB {
   // logfile_number_. With two_write_queues it also protects alive_log_files_,
   // and log_empty_. Refer to the definition of each variable below for more
   // details.
+  // Note: to avoid dealock, if needed to acquire both log_write_mutex_ and
+  // mutex_, the order should be first mutex_ and then log_write_mutex_.
   InstrumentedMutex log_write_mutex_;
   // State below is protected by mutex_
   // With two_write_queues enabled, some of the variables that accessed during
