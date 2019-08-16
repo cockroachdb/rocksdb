@@ -224,7 +224,9 @@ FragmentedRangeTombstoneIterator::FragmentedRangeTombstoneIterator(
       ucmp_(icmp.user_comparator()),
       tombstones_(tombstones),
       upper_bound_(_upper_bound),
-      lower_bound_(_lower_bound) {
+      lower_bound_(_lower_bound),
+      pinned_pos_(tombstones->end()),
+      pinned_seq_pos_(tombstones->seq_end()) {
   assert(tombstones_ != nullptr);
   Invalidate();
 }
@@ -240,7 +242,9 @@ FragmentedRangeTombstoneIterator::FragmentedRangeTombstoneIterator(
       tombstones_ref_(tombstones),
       tombstones_(tombstones_ref_.get()),
       upper_bound_(_upper_bound),
-      lower_bound_(_lower_bound) {
+      lower_bound_(_lower_bound),
+      pinned_pos_(tombstones->end()),
+      pinned_seq_pos_(tombstones->seq_end()) {
   assert(tombstones_ != nullptr);
   Invalidate();
 }
