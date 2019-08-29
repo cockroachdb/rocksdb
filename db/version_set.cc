@@ -2861,7 +2861,14 @@ Status VersionSet::ProcessManifestWrites(
       }
       assert(builder != nullptr);  // make checker happy
       for (const auto& e : last_writer->edit_list) {
-        LogAndApplyHelper(last_writer->cfd, builder, version, e, mu);
+        Status s = LogAndApplyHelper(last_writer->cfd, builder, version, e, mu);
+        if (!s.ok()) {
+          // free up the allocated memory
+          for (auto v : versions) {
+            delete v;
+          }
+          return s;
+        }
         batch_edits.push_back(e);
       }
     }
@@ -2869,7 +2876,14 @@ Status VersionSet::ProcessManifestWrites(
       assert(!builder_guards.empty() &&
              builder_guards.size() == versions.size());
       auto* builder = builder_guards[i]->version_builder();
-      builder->SaveTo(versions[i]->storage_info());
+      Status s = builder->SaveTo(versions[i]->storage_info());
+      if (!s.ok()) {
+        // free up the allocated memory
+        for (auto v : versions) {
+          delete v;
+        }
+        return s;
+      }
     }
   }
 
@@ -3201,9 +3215,9 @@ void VersionSet::LogAndApplyCFHelper(VersionEdit* edit) {
   }
 }
 
-void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
-                                   VersionBuilder* builder, Version* /*v*/,
-                                   VersionEdit* edit, InstrumentedMutex* mu) {
+Status VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
+                                     VersionBuilder* builder, Version* /*v*/,
+                                     VersionEdit* edit, InstrumentedMutex* mu) {
 #ifdef NDEBUG
   (void)cfd;
 #endif
@@ -3227,7 +3241,9 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   edit->SetLastSequence(db_options_->two_write_queues ? last_allocated_sequence_
                                                       : last_sequence_);
 
-  builder->Apply(edit);
+  Status s = builder->Apply(edit);
+
+  return s;
 }
 
 Status VersionSet::ApplyOneVersionEdit(
@@ -3308,7 +3324,10 @@ Status VersionSet::ApplyOneVersionEdit(
     // to builder
     auto builder = builders.find(edit.column_family_);
     assert(builder != builders.end());
-    builder->second->version_builder()->Apply(&edit);
+    Status s = builder->second->version_builder()->Apply(&edit);
+    if (!s.ok()) {
+      return s;
+    }
   }
 
   if (cfd != nullptr) {
@@ -3876,7 +3895,10 @@ Status VersionSet::DumpManifest(Options& options, std::string& dscname,
         // to builder
         auto builder = builders.find(edit.column_family_);
         assert(builder != builders.end());
-        builder->second->version_builder()->Apply(&edit);
+        s = builder->second->version_builder()->Apply(&edit);
+        if (!s.ok()) {
+          break;
+        }
       }
 
       if (cfd != nullptr && edit.has_log_number_) {
