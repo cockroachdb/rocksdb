@@ -1,6 +1,7 @@
 # Rocksdb Change Log
 ## Unreleased
 ### New Features
+* When user uses options.force_consistency_check in RocksDb, instead of crashing the process, we now pass the error back to the users without killing the process.
 * Add an option `strict_bytes_per_sync` that causes a file-writing thread to block rather than exceed the limit on bytes pending writeback specified by `bytes_per_sync` or `wal_bytes_per_sync`.
 * When reading from option file/string/map, customized envs can be filled according to object registry.
 
