@@ -4,6 +4,7 @@
 * The "rocksdb.num.entries" table property no longer counts range deletion tombstones as entries.
 
 ### New Features
+* When user uses options.force_consistency_check in RocksDb, instead of crashing the process, we now pass the error back to the users without killing the process.
 * Add a new table property, "rocksdb.num.range-deletions", which counts the number of range deletion tombstones in the table.
 
 ## 5.13.4 (6/12/2018)

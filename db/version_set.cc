@@ -2809,11 +2809,21 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       }
       last_writer = writer;
       for (const auto& edit : writer->edit_list) {
-        LogAndApplyHelper(column_family_data, builder, v, edit, mu);
+        Status s = LogAndApplyHelper(column_family_data, builder, v, edit, mu);
+        if (!s.ok()) {
+          // free up the allocated memory
+          delete v;
+          return s;
+        }
         batch_edits.push_back(edit);
       }
     }
-    builder->SaveTo(v->storage_info());
+    Status s = builder->SaveTo(v->storage_info());
+    if (!s.ok()) {
+      // free up the allocated memory
+      delete v;
+      return s;
+    }
   }
 
   // Initialize new descriptor log file if necessary by creating
@@ -3027,9 +3037,9 @@ void VersionSet::LogAndApplyCFHelper(VersionEdit* edit) {
   }
 }
 
-void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
-                                   VersionBuilder* builder, Version* /*v*/,
-                                   VersionEdit* edit, InstrumentedMutex* mu) {
+Status VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
+                                     VersionBuilder* builder, Version* /*v*/,
+                                     VersionEdit* edit, InstrumentedMutex* mu) {
   mu->AssertHeld();
   assert(!edit->IsColumnFamilyManipulation());
 
@@ -3050,7 +3060,9 @@ void VersionSet::LogAndApplyHelper(ColumnFamilyData* cfd,
   edit->SetLastSequence(db_options_->two_write_queues ? last_allocated_sequence_
                                                       : last_sequence_);
 
-  builder->Apply(edit);
+  Status s = builder->Apply(edit);
+
+  return s;
 }
 
 Status VersionSet::Recover(
@@ -3634,7 +3646,10 @@ Status VersionSet::DumpManifest(Options& options, std::string& dscname,
         // to builder
         auto builder = builders.find(edit.column_family_);
         assert(builder != builders.end());
-        builder->second->version_builder()->Apply(&edit);
+        s = builder->second->version_builder()->Apply(&edit);
+        if (!s.ok()) {
+          break;
+        }
       }
 
       if (cfd != nullptr && edit.has_log_number_) {

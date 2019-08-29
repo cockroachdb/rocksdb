@@ -3535,6 +3535,31 @@ INSTANTIATE_TEST_CASE_P(
                       CompactionPri::kOldestSmallestSeqFirst,
                       CompactionPri::kMinOverlappingRatio));
 
+TEST_F(DBCompactionTest, ConsistencyFailTest) {
+  Options options = CurrentOptions();
+  DestroyAndReopen(options);
+
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "VersionBuilder::CheckConsistency", [&](void* arg) {
+      auto p =
+            reinterpret_cast<std::pair<FileMetaData**, FileMetaData**>*>(arg);
+        // just swap the two FileMetaData so that we hit error
+        // in CheckConsistency funcion
+        FileMetaData* temp = *(p->first);
+        *(p->first) = *(p->second);
+        *(p->second) = temp;
+      });
+
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+
+  for (int k = 0; k < 2; ++k) {
+    ASSERT_OK(Put("foo", "bar"));
+    Flush();
+  }
+
+  ASSERT_NOK(Put("foo", "bar"));
+  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+}
 #endif // !defined(ROCKSDB_LITE)
 }  // namespace rocksdb
 
