@@ -183,25 +183,17 @@ size_t GetUniqueIdFromFile(HANDLE hFile, char* id, size_t max_size) {
 #if (_WIN32_WINNT == _WIN32_WINNT_VISTA)
   // MINGGW as defined by CMake file.
   // yuslepukhin: I hate the guts of the above macros.
-  // This impl does not guarantee uniqueness everywhere
-  // is reasonably good
-  BY_HANDLE_FILE_INFORMATION FileInfo;
 
-  BOOL result = GetFileInformationByHandle(hFile, &FileInfo);
-
-  TEST_SYNC_POINT_CALLBACK("GetUniqueIdFromFile:FS_IOC_GETVERSION", &result);
-
-  if (!result) {
-    return 0;
-  }
-
-  char* rid = id;
-  rid = EncodeVarint64(rid, uint64_t(FileInfo.dwVolumeSerialNumber));
-  rid = EncodeVarint64(rid, uint64_t(FileInfo.nFileIndexHigh));
-  rid = EncodeVarint64(rid, uint64_t(FileInfo.nFileIndexLow));
-
-  assert(rid >= id);
-  return static_cast<size_t>(rid - id);
+  // `FileIdInfo` is not supported. The possible alternative,
+  // `BY_HANDLE_FILE_INFORMATION::nFileIndex{High,Low}`, allows deleted files'
+  // IDs to be reused for newly created files. Since we don't evict from block
+  // cache before deleting a file, this introduces a risk that readers access
+  // obsolete data blocks.
+  //
+  // Returning 0 is safe as it causes the table reader to generate a unique ID.
+  // This is suboptimal for performance as it prevents multiple table readers
+  // for the same file from sharing cached blocks, but at least it's safe.
+  return 0;
 #else
   FILE_ID_INFO FileInfo;
   BOOL result = GetFileInformationByHandleEx(hFile, FileIdInfo, &FileInfo,
