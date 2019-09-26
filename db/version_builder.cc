@@ -169,22 +169,29 @@ class VersionBuilder::Rep {
 
           if (f2->fd.smallest_seqno == f2->fd.largest_seqno) {
             // This is an external file that we ingested
-            SequenceNumber external_file_seqno = f2->fd.smallest_seqno;
-            if (!(external_file_seqno < f1->fd.largest_seqno ||
-                  external_file_seqno == 0)) {
-              fprintf(stderr,
-                      "L0 file with seqno %" PRIu64 " %" PRIu64
-                      " vs. file with global_seqno %" PRIu64 "\n",
-                      f1->fd.smallest_seqno, f1->fd.largest_seqno,
-                      external_file_seqno);
-              return Status::Corruption("L0 file with seqno " +
-                                        NumberToString(f1->fd.smallest_seqno) +
-                                        " " +
-                                        NumberToString(f1->fd.largest_seqno) +
-                                        " vs. file with global_seqno" +
-                                        NumberToString(external_file_seqno) +
-                                        " with fileNumber " +
-                                        NumberToString(f1->fd.GetNumber()));
+            SequenceNumber f2_external_file_seqno = f2->fd.smallest_seqno;
+            bool is_f1_ingested = f1->fd.smallest_seqno == f1->fd.largest_seqno;
+            if (f2_external_file_seqno != 0) {
+              // This file's seqnos were not zeroed so we can use its seqnos to
+              // determine it is ordered properly.
+              if (!(f1->fd.largest_seqno > f2_external_file_seqno ||
+                    (is_f1_ingested && f1->fd.largest_seqno == f2_external_file_seqno))) {
+                // f1 should be newer than f2. Equal seqnos are only allowed
+                // when both files were ingested.
+                fprintf(stderr,
+                        "L0 file with seqno %" PRIu64 " %" PRIu64
+                        " vs. file with global_seqno %" PRIu64 "\n",
+                        f1->fd.smallest_seqno, f1->fd.largest_seqno,
+                        f2_external_file_seqno);
+                return Status::Corruption("L0 file with seqno " +
+                                          NumberToString(f1->fd.smallest_seqno) +
+                                          " " +
+                                          NumberToString(f1->fd.largest_seqno) +
+                                          " vs. file with global_seqno" +
+                                          NumberToString(f2_external_file_seqno) +
+                                          " with fileNumber " +
+                                          NumberToString(f1->fd.GetNumber()));
+              }
             }
           } else if (f1->fd.smallest_seqno <= f2->fd.smallest_seqno) {
             fprintf(stderr,
