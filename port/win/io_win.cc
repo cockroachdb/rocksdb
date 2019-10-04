@@ -175,19 +175,6 @@ Status ftruncate(const std::string& filename, HANDLE hFile,
   return status;
 }
 
-size_t GetUniqueIdFromFile(HANDLE /*hFile*/, char* /*id*/, size_t /*max_size*/) {
-  // `FileIdInfo` is not supported. The possible alternative,
-  // `BY_HANDLE_FILE_INFORMATION::nFileIndex{High,Low}`, allows deleted files'
-  // IDs to be reused for newly created files. Since we don't evict from block
-  // cache before deleting a file, this introduces a risk that readers access
-  // obsolete data blocks.
-  //
-  // Returning 0 is safe as it causes the table reader to generate a unique ID.
-  // This is suboptimal for performance as it prevents multiple table readers
-  // for the same file from sharing cached blocks, but at least it's safe.
-  return 0;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // WinMmapReadableFile
 
@@ -226,10 +213,6 @@ Status WinMmapReadableFile::Read(uint64_t offset, size_t n, Slice* result,
 
 Status WinMmapReadableFile::InvalidateCache(size_t offset, size_t length) {
   return Status::OK();
-}
-
-size_t WinMmapReadableFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(hFile_, id, max_size);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -552,10 +535,6 @@ Status WinMmapFile::Allocate(uint64_t offset, uint64_t len) {
   return status;
 }
 
-size_t WinMmapFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(hFile_, id, max_size);
-}
-
 //////////////////////////////////////////////////////////////////////////////////
 // WinSequentialFile
 
@@ -717,10 +696,6 @@ Status WinRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
 
 Status WinRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
   return Status::OK();
-}
-
-size_t WinRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(GetFileHandle(), id, max_size);
 }
 
 size_t WinRandomAccessFile::GetRequiredBufferAlignment() const {
@@ -980,10 +955,6 @@ Status WinWritableFile::Allocate(uint64_t offset, uint64_t len) {
   return AllocateImpl(offset, len);
 }
 
-size_t WinWritableFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(GetFileHandle(), id, max_size);
-}
-
 /////////////////////////////////////////////////////////////////////////
 /// WinRandomRWFile
 
@@ -1046,10 +1017,6 @@ WinMemoryMappedBuffer::~WinMemoryMappedBuffer() {
 /// WinDirectory
 
 Status WinDirectory::Fsync() { return Status::OK(); }
-
-size_t WinDirectory::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(handle_, id, max_size);
-}
 //////////////////////////////////////////////////////////////////////////
 /// WinFileLock
 
