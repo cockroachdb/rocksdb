@@ -429,12 +429,6 @@ Status PosixRandomAccessFile::Prefetch(uint64_t offset, size_t n) {
   return s;
 }
 
-#if defined(OS_LINUX) || defined(OS_MACOSX) || defined(OS_AIX)
-size_t PosixRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
-  return PosixHelper::GetUniqueIdFromFile(fd_, id, max_size);
-}
-#endif
-
 void PosixRandomAccessFile::Hint(AccessPattern pattern) {
   if (use_direct_io()) {
     return;
@@ -1020,12 +1014,6 @@ Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
 #endif  // ROCKSDB_RANGESYNC_PRESENT
   return WritableFile::RangeSync(offset, nbytes);
 }
-
-#ifdef OS_LINUX
-size_t PosixWritableFile::GetUniqueId(char* id, size_t max_size) const {
-  return PosixHelper::GetUniqueIdFromFile(fd_, id, max_size);
-}
-#endif
 
 /*
  * PosixRandomRWFile

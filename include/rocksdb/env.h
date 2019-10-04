@@ -572,6 +572,8 @@ class SequentialFile {
 
 // A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {
+ private:
+  std::string unique_id_;
  public:
   RandomAccessFile() {}
   virtual ~RandomAccessFile();
@@ -609,10 +611,20 @@ class RandomAccessFile {
   // a single varint.
   //
   // Note: these IDs are only valid for the duration of the process.
-  virtual size_t GetUniqueId(char* /*id*/, size_t /*max_size*/) const {
-    return 0;  // Default implementation to prevent issues with backwards
-               // compatibility.
-  };
+  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+    if (unique_id_.length() > 0 && max_size >= unique_id_.length()) {
+      for (unsigned int i=0; i<unique_id_.length(); i++) {
+        id[i] = unique_id_[i];
+      }
+      return unique_id_.length();
+    }
+    return 0;
+  }
+
+  // Sets a unique ID for this file that could be returned in GetUniqueId.
+  virtual void SetUniqueId(std::string unique_id) {
+    unique_id_ = unique_id;
+  }
 
   enum AccessPattern { NORMAL, RANDOM, SEQUENTIAL, WILLNEED, DONTNEED };
 
@@ -751,8 +763,19 @@ class WritableFile {
   }
 
   // For documentation, refer to RandomAccessFile::GetUniqueId()
-  virtual size_t GetUniqueId(char* /*id*/, size_t /*max_size*/) const {
-    return 0;  // Default implementation to prevent issues with backwards
+  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+    if (unique_id_.length() > 0 && max_size >= unique_id_.length()) {
+      for (unsigned int i=0; i<unique_id_.length(); i++) {
+        id[i] = unique_id_[i];
+      }
+      return unique_id_.length();
+    }
+    return 0;
+  }
+
+  // Sets a unique ID for this file that could be returned in GetUniqueId.
+  virtual void SetUniqueId(std::string unique_id) {
+    unique_id_ = unique_id;
   }
 
   // Remove any kind of caching of data from the offset to offset+length
@@ -814,6 +837,7 @@ class WritableFile {
  private:
   size_t last_preallocated_block_;
   size_t preallocation_block_size_;
+  std::string unique_id_;
   // No copying allowed
   WritableFile(const WritableFile&);
   void operator=(const WritableFile&);
@@ -1321,6 +1345,9 @@ class RandomAccessFileWrapper : public RandomAccessFile {
   size_t GetUniqueId(char* id, size_t max_size) const override {
     return target_->GetUniqueId(id, max_size);
   };
+  void SetUniqueId(std::string unique_id) override {
+    target_->SetUniqueId(unique_id);
+  }
   void Hint(AccessPattern pattern) override { target_->Hint(pattern); }
   bool use_direct_io() const override { return target_->use_direct_io(); }
   size_t GetRequiredBufferAlignment() const override {
@@ -1382,6 +1409,10 @@ class WritableFileWrapper : public WritableFile {
 
   size_t GetUniqueId(char* id, size_t max_size) const override {
     return target_->GetUniqueId(id, max_size);
+  }
+
+  void SetUniqueId(std::string unique_id) override {
+    target_->SetUniqueId(unique_id);
   }
 
   Status InvalidateCache(size_t offset, size_t length) override {

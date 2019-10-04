@@ -78,6 +78,12 @@ TableCache::TableCache(const ImmutableCFOptions& ioptions,
     // disambiguate its entries.
     PutVarint64(&row_cache_id_, ioptions_.row_cache->NewId());
   }
+  // Generate a per-TableCache ID. We're limited to two kMaxVarint64Lengths,
+  // since this will form part of the cache prefix for files (which is 3
+  // kMaxVarint64Lengths). Since there's one TableCache per DB instance, a
+  // randomly generated ID here approximates a DB instance ID pretty well.
+  std::string cache_id = ioptions.env->GenerateUniqueId();
+  cache_id_ = cache_id.substr(0, kMaxVarint64Length*2);
 }
 
 TableCache::~TableCache() {
@@ -115,6 +121,12 @@ Status TableCache::GetTableReader(
     if (!sequential_mode && ioptions_.advise_random_on_open) {
       file->Hint(RandomAccessFile::RANDOM);
     }
+
+    // Generate a unique ID for this file, consisting of <cache_id,file_number>.
+    std::string file_id = cache_id_;
+    PutVarint64(&file_id, fd.GetNumber());
+    file->SetUniqueId(file_id);
+
     StopWatch sw(ioptions_.env, ioptions_.statistics, TABLE_OPEN_IO_MICROS);
     std::unique_ptr<RandomAccessFileReader> file_reader(
         new RandomAccessFileReader(

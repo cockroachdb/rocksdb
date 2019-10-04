@@ -162,6 +162,7 @@ class TableCache {
   Cache* const cache_;
   std::string row_cache_id_;
   bool immortal_tables_;
+  std::string cache_id_;
 };
 
 }  // namespace rocksdb
