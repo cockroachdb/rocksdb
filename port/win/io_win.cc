@@ -719,10 +719,6 @@ Status WinRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
   return Status::OK();
 }
 
-size_t WinRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(GetFileHandle(), id, max_size);
-}
-
 size_t WinRandomAccessFile::GetRequiredBufferAlignment() const {
   return GetAlignment();
 }
@@ -978,10 +974,6 @@ uint64_t WinWritableFile::GetFileSize() {
 
 Status WinWritableFile::Allocate(uint64_t offset, uint64_t len) {
   return AllocateImpl(offset, len);
-}
-
-size_t WinWritableFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(GetFileHandle(), id, max_size);
 }
 
 /////////////////////////////////////////////////////////////////////////

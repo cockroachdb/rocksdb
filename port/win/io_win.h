@@ -269,8 +269,6 @@ class WinRandomAccessFile
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const override;
 
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override;
-
   virtual bool use_direct_io() const override { return WinFileData::use_direct_io(); }
 
   virtual Status InvalidateCache(size_t offset, size_t length) override;
@@ -374,8 +372,6 @@ class WinWritableFile : private WinFileData,
   virtual uint64_t GetFileSize() override;
 
   virtual Status Allocate(uint64_t offset, uint64_t len) override;
-
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override;
 };
 
 class WinRandomRWFile : private WinFileData,
