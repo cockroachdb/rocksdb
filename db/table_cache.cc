@@ -78,10 +78,14 @@ TableCache::TableCache(const ImmutableCFOptions& ioptions,
     // disambiguate its entries.
     PutVarint64(&row_cache_id_, ioptions_.row_cache->NewId());
   }
+  // Generate a per-TableCache ID by incrementing a static counter.
+  cache_id_ = cache_id_alloc++;
 }
 
 TableCache::~TableCache() {
 }
+
+std::atomic<uint64_t> TableCache::cache_id_alloc(0);
 
 TableReader* TableCache::GetTableReaderFromHandle(Cache::Handle* handle) {
   return reinterpret_cast<TableReader*>(cache_->Value(handle));
@@ -115,6 +119,13 @@ Status TableCache::GetTableReader(
     if (!sequential_mode && ioptions_.advise_random_on_open) {
       file->Hint(RandomAccessFile::RANDOM);
     }
+
+    // Generate a unique ID for this file, consisting of <cache_id,file_number>.
+    std::string file_id;
+    PutVarint64(&file_id, cache_id_);
+    PutVarint64(&file_id, fd.GetNumber());
+    file->SetUniqueId(file_id);
+
     StopWatch sw(ioptions_.env, ioptions_.statistics, TABLE_OPEN_IO_MICROS);
     std::unique_ptr<RandomAccessFileReader> file_reader(
         new RandomAccessFileReader(
