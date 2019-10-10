@@ -1125,6 +1125,8 @@ Status DBImpl::CreateWAL(uint64_t log_file_num, uint64_t recycle_log_number,
                    recycle_log_number);
     std::string old_log_fname =
         LogFileName(immutable_db_options_.wal_dir, recycle_log_number);
+    TEST_SYNC_POINT("DBImpl::CreateWAL:BeforeReuseWritableFile1");
+    TEST_SYNC_POINT("DBImpl::CreateWAL:BeforeReuseWritableFile2");
     s = env_->ReuseWritableFile(log_fname, old_log_fname, &lfile,
                                 opt_env_options);
   } else {

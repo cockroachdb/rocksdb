@@ -1400,7 +1400,6 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   if (creating_new_log && immutable_db_options_.recycle_log_file_num &&
       !log_recycle_files_.empty()) {
     recycle_log_number = log_recycle_files_.front();
-    log_recycle_files_.pop_front();
   }
   uint64_t new_log_number =
       creating_new_log ? versions_->NewFileNumber() : logfile_number_;
@@ -1437,6 +1436,14 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
                  ". Immutable memtables: %d.\n",
                  cfd->GetName().c_str(), new_log_number, num_imm_unflushed);
   mutex_.Lock();
+  if (recycle_log_number != 0) {
+    // Since renaming the file is done outside DB mutex, we need to ensure
+    // concurrent full purges don't delete the file while we're recycling it.
+    // To achieve that we hold the old log number in the recyclable list until
+    // after it has been renamed.
+    assert(log_recycle_files_.front() == recycle_log_number);
+    log_recycle_files_.pop_front();
+  }
   if (s.ok() && creating_new_log) {
     log_write_mutex_.Lock();
     assert(new_log != nullptr);
