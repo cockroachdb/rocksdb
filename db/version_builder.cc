@@ -166,47 +166,6 @@ class VersionBuilder::Rep {
             fprintf(stderr, "L0 files are not sorted properly");
             return Status::Corruption("L0 files are not sorted properly");
           }
-
-          if (f2->fd.smallest_seqno == f2->fd.largest_seqno) {
-            // This is an external file that we ingested
-            SequenceNumber f2_external_file_seqno = f2->fd.smallest_seqno;
-            bool is_f1_ingested = f1->fd.smallest_seqno == f1->fd.largest_seqno;
-            if (f2_external_file_seqno != 0) {
-              // This file's seqnos were not zeroed so we can use its seqnos to
-              // determine it is ordered properly.
-              if (!(f1->fd.largest_seqno > f2_external_file_seqno ||
-                    (is_f1_ingested && f1->fd.largest_seqno == f2_external_file_seqno))) {
-                // f1 should be newer than f2. Equal seqnos are only allowed
-                // when both files were ingested.
-                fprintf(stderr,
-                        "L0 file with seqno %" PRIu64 " %" PRIu64
-                        " vs. file with global_seqno %" PRIu64 "\n",
-                        f1->fd.smallest_seqno, f1->fd.largest_seqno,
-                        f2_external_file_seqno);
-                return Status::Corruption("L0 file with seqno " +
-                                          NumberToString(f1->fd.smallest_seqno) +
-                                          " " +
-                                          NumberToString(f1->fd.largest_seqno) +
-                                          " vs. file with global_seqno" +
-                                          NumberToString(f2_external_file_seqno) +
-                                          " with fileNumber " +
-                                          NumberToString(f1->fd.GetNumber()));
-              }
-            }
-          } else if (f1->fd.smallest_seqno <= f2->fd.smallest_seqno) {
-            fprintf(stderr,
-                    "L0 files seqno %" PRIu64 " %" PRIu64 " vs. %" PRIu64
-                    " %" PRIu64 "\n",
-                    f1->fd.smallest_seqno, f1->fd.largest_seqno,
-                    f2->fd.smallest_seqno, f2->fd.largest_seqno);
-            return Status::Corruption(
-                "L0 files seqno " + NumberToString(f1->fd.smallest_seqno) +
-                " " + NumberToString(f1->fd.largest_seqno) + " " +
-                NumberToString(f1->fd.GetNumber()) + " vs. " +
-                NumberToString(f2->fd.smallest_seqno) + " " +
-                NumberToString(f2->fd.largest_seqno) + " " +
-                NumberToString(f2->fd.GetNumber()));
-          }
         } else {
           if (!level_nonzero_cmp_(f1, f2)) {
             fprintf(stderr, "L%d files are not sorted properly", level);

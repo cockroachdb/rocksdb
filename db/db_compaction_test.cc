@@ -3075,6 +3075,61 @@ TEST_P(DBCompactionTestWithParam, ForceBottommostLevelCompaction) {
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
+TEST_F(DBCompactionTest, IntraL0CompactionIngestedFiles) {
+  // Repros a (removed) consistency check violation that happened under normal
+  // circumstances. In particular, if files were ingested to L0 and underwent
+  // L0->L0 compaction, it was possible their seqnum range would lie entirely
+  // within the next flushed memtable's seqnum range. The consistency checker
+  // used to allow this case for ingested files only, while the file produced by
+  // L0->L0 would not be considered ingested.
+  const int kNumL0FileTrigger = 4;
+  const int kNumIngestedFiles = 2 * kNumL0FileTrigger + 1;
+  Options options = CurrentOptions();
+  options.level0_file_num_compaction_trigger = kNumL0FileTrigger;
+  options.max_background_compactions = 2;
+  options.num_levels = 2;
+  DestroyAndReopen(options);
+
+  std::string sst_files_dir = dbname_ + "/sst_files/";
+  test::DestroyDir(env_, sst_files_dir);
+  ASSERT_OK(env_->CreateDir(sst_files_dir));
+
+  // File 0 is ingested directly to L1. Files 1-4 will be included in an L0->L1
+  // compaction.
+  //
+  // L0->L0 will be triggered since the sync points guarantee compaction to base
+  // level is still blocked when files 5-8 trigger another compaction.
+  //
+  // Some keys non-overlapping with the ingested files are added before and
+  // after the ingestions. That ensures the memtable's seqnum range encloses the
+  // seqnum range of the file produced by L0->L0.
+  //
+  // Note the purpose of pushing the ingested files through L0->L0 is to trigger
+  // a (now removed) seqnum validation that only applied to non-ingested files.
+  Random rnd(301);
+  std::string value(RandomString(&rnd, 64 /* len */));
+  rocksdb::SyncPoint::GetInstance()->LoadDependency(
+      {{"LevelCompactionPicker::PickCompactionBySize:0",
+        "CompactionJob::Run():Start"}});
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  ASSERT_OK(Put(Key(kNumIngestedFiles + 1), "value"));
+  for (int i = 0; i < kNumIngestedFiles; ++i) {
+    SstFileWriter sst_writer(EnvOptions(), options);
+    const std::string sst_file_path = sst_files_dir + "test.sst";
+    ASSERT_OK(sst_writer.Open(sst_file_path));
+    // Make them all contain key 0 so they overlap thus preventing trivial move.
+    ASSERT_OK(sst_writer.Put(Key(0), "value"));
+    ASSERT_OK(sst_writer.Put(Key(i + 1), "value"));
+    ASSERT_OK(sst_writer.Finish());
+
+    IngestExternalFileOptions ifo;
+    ASSERT_OK(db_->IngestExternalFile({sst_file_path}, ifo));
+  }
+  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(Put(Key(kNumIngestedFiles + 2), "value"));
+  ASSERT_OK(Flush());
+}
+
 TEST_P(DBCompactionTestWithParam, IntraL0Compaction) {
   Options options = CurrentOptions();
   options.compression = kNoCompression;
