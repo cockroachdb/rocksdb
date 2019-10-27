@@ -237,6 +237,8 @@ class InternalStats {
       }
     }
 
+    CompactionStats& operator=(const CompactionStats&) = default;
+
     void Clear() {
       this->micros = 0;
       this->cpu_micros = 0;
@@ -625,6 +627,8 @@ class InternalStats {
     explicit CompactionStats(CompactionReason /*reason*/, int /*c*/) {}
 
     explicit CompactionStats(const CompactionStats& /*c*/) {}
+
+    CompactionStats& operator=(const CompactionStats&) = default;
 
     void Add(const CompactionStats& /*c*/) {}
 

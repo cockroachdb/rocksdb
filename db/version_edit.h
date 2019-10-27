@@ -61,6 +61,8 @@ struct FileDescriptor {
     return *this;
   }
 
+  constexpr FileDescriptor(const rocksdb::FileDescriptor&) = default;
+
   uint64_t GetNumber() const {
     return packed_number_and_path_id & kFileNumberMask;
   }
