@@ -387,6 +387,12 @@ void SuperVersion::Init(MemTable* new_mem, MemTableListVersion* new_imm,
   refs.store(1, std::memory_order_relaxed);
 }
 
+SequenceNumber SuperVersion::GetEarliestMemTableSequenceNumber() const {
+  SequenceNumber earliest_seqno = std::min(
+      mem->GetEarliestSequenceNumber(), imm->GetEarliestSequenceNumber(false));
+  return earliest_seqno;
+}
+
 namespace {
 void SuperVersionUnrefHandle(void* ptr) {
   // UnrefHandle is called when a thread exists or a ThreadLocalPtr gets
@@ -922,8 +928,15 @@ bool ColumnFamilyData::NeedsCompaction() const {
 
 Compaction* ColumnFamilyData::PickCompaction(
     const MutableCFOptions& mutable_options, LogBuffer* log_buffer) {
+  // To the best of our knowledge `super_version_` is updated atomically with
+  // `current_`. Then, since we are holding the lock through `PickCompaction()`,
+  // it is safe to access some state via `super_version_` and other state via
+  // `current_`.
+  SequenceNumber earliest_mem_seqno =
+      super_version_->GetEarliestMemTableSequenceNumber();
   auto* result = compaction_picker_->PickCompaction(
-      GetName(), mutable_options, current_->storage_info(), log_buffer);
+      GetName(), mutable_options, current_->storage_info(), log_buffer,
+      earliest_mem_seqno);
   if (result != nullptr) {
     result->SetInputVersion(current_);
   }

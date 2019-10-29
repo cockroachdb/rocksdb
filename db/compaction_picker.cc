@@ -42,29 +42,44 @@ uint64_t TotalCompensatedFileSize(const std::vector<FileMetaData*>& files) {
 bool FindIntraL0Compaction(const std::vector<FileMetaData*>& level_files,
                            size_t min_files_to_compact,
                            uint64_t max_compact_bytes_per_del_file,
-                           CompactionInputFiles* comp_inputs) {
-  size_t compact_bytes = static_cast<size_t>(level_files[0]->fd.file_size);
+                           CompactionInputFiles* comp_inputs,
+                           SequenceNumber earliest_mem_seqno) {
+  // Do not pick ingested file when there is at least one memtable not flushed
+  // which of seqno is overlap with the sst.
+  size_t start = 0;
+  for (; start < level_files.size(); ++start) {
+    if (level_files[start]->being_compacted) {
+      return false;
+    }
+    if (level_files[start]->fd.largest_seqno <= earliest_mem_seqno) {
+      break;
+    }
+  }
+  if (start >= level_files.size()) {
+    return false;
+  }
+  size_t compact_bytes = static_cast<size_t>(level_files[start]->fd.file_size);
   size_t compact_bytes_per_del_file = port::kMaxSizet;
-  // compaction range will be [0, span_len).
-  size_t span_len;
-  // pull in files until the amount of compaction work per deleted file begins
-  // increasing.
+  // Compaction range will be [start, limit).
+  size_t limit;
+  // Pull in files until the amount of compaction work per deleted file begins
+  // increasing or maximum total compaction size is reached.
   size_t new_compact_bytes_per_del_file = 0;
-  for (span_len = 1; span_len < level_files.size(); ++span_len) {
-    compact_bytes += static_cast<size_t>(level_files[span_len]->fd.file_size);
-    new_compact_bytes_per_del_file = compact_bytes / span_len;
-    if (level_files[span_len]->being_compacted ||
+  for (limit = start + 1; limit < level_files.size(); ++limit) {
+    compact_bytes += static_cast<size_t>(level_files[limit]->fd.file_size);
+    new_compact_bytes_per_del_file = compact_bytes / (limit - start);
+    if (level_files[limit]->being_compacted ||
         new_compact_bytes_per_del_file > compact_bytes_per_del_file) {
       break;
     }
     compact_bytes_per_del_file = new_compact_bytes_per_del_file;
   }
 
-  if (span_len >= min_files_to_compact &&
+  if ((limit - start) >= min_files_to_compact &&
       compact_bytes_per_del_file < max_compact_bytes_per_del_file) {
     assert(comp_inputs != nullptr);
     comp_inputs->level = 0;
-    for (size_t i = 0; i < span_len; ++i) {
+    for (size_t i = start; i < limit; ++i) {
       comp_inputs->files.push_back(level_files[i]);
     }
     return true;
@@ -1135,12 +1150,14 @@ class LevelCompactionBuilder {
  public:
   LevelCompactionBuilder(const std::string& cf_name,
                          VersionStorageInfo* vstorage,
+                         SequenceNumber earliest_mem_seqno,
                          CompactionPicker* compaction_picker,
                          LogBuffer* log_buffer,
                          const MutableCFOptions& mutable_cf_options,
                          const ImmutableCFOptions& ioptions)
       : cf_name_(cf_name),
         vstorage_(vstorage),
+        earliest_mem_seqno_(earliest_mem_seqno),
         compaction_picker_(compaction_picker),
         log_buffer_(log_buffer),
         mutable_cf_options_(mutable_cf_options),
@@ -1187,6 +1204,7 @@ class LevelCompactionBuilder {
 
   const std::string& cf_name_;
   VersionStorageInfo* vstorage_;
+  SequenceNumber earliest_mem_seqno_;
   CompactionPicker* compaction_picker_;
   LogBuffer* log_buffer_;
   int start_level_ = -1;
@@ -1619,23 +1637,24 @@ bool LevelCompactionBuilder::PickIntraL0Compaction() {
   const std::vector<FileMetaData*>& level_files =
       vstorage_->LevelFiles(0 /* level */);
   if (level_files.size() <
-          static_cast<size_t>(
-              mutable_cf_options_.level0_file_num_compaction_trigger + 2) ||
-      level_files[0]->being_compacted) {
+      static_cast<size_t>(
+          mutable_cf_options_.level0_file_num_compaction_trigger + 2)) {
     // If L0 isn't accumulating much files beyond the regular trigger, don't
     // resort to L0->L0 compaction yet.
     return false;
   }
   return FindIntraL0Compaction(level_files, kMinFilesForIntraL0Compaction,
-                               port::kMaxUint64, &start_level_inputs_);
+                               port::kMaxUint64, &start_level_inputs_,
+                               earliest_mem_seqno_);
 }
 }  // namespace
 
 Compaction* LevelCompactionPicker::PickCompaction(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
-    VersionStorageInfo* vstorage, LogBuffer* log_buffer) {
-  LevelCompactionBuilder builder(cf_name, vstorage, this, log_buffer,
-                                 mutable_cf_options, ioptions_);
+    VersionStorageInfo* vstorage, LogBuffer* log_buffer,
+    SequenceNumber earliest_mem_seqno) {
+  LevelCompactionBuilder builder(cf_name, vstorage, earliest_mem_seqno, this,
+                                 log_buffer, mutable_cf_options, ioptions_);
   return builder.PickCompaction();
 }
 
