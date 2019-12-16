@@ -1790,7 +1790,9 @@ void BlockBasedTableIterator::Seek(const Slice& const_target) {
   // Before we seek the iterator, find the next non-deleted key.
   InitRangeTombstone(target);
   std::string tmp_target;
-  if (range_tombstone_.seq() > 0) {
+  if (range_tombstone_.seq() > 0 &&
+      (!Valid() ||
+       icomp_.Compare(key(), tombstone_internal_end_key()) < 0)) {
     tmp_target = tombstone_internal_end_key();
     target = tmp_target;
   }
@@ -2024,9 +2026,13 @@ void BlockBasedTableIterator::FindKeyForward() {
       InitRangeTombstone(key());
       continue;
     }
-    // The key is contained within the current tombstone.
-    if (range_tombstone_.seq() == 0) {
-      // The tombstone doesn't apply to the sstable. Return the entry.
+    // The key is contained within the current tombstone, at least from a user
+    // key perspective.
+    if (range_tombstone_.seq() == 0 ||
+        (Valid() &&
+         icomp_.Compare(key(), tombstone_internal_end_key()) >= 0)) {
+      // The tombstone doesn't apply to the current key or doesn't allow us to
+      // skip past it. Return the entry.
       return;
     }
 
