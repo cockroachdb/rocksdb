@@ -2025,8 +2025,10 @@ void BlockBasedTableIterator::FindKeyForward() {
       continue;
     }
     // The key is contained within the current tombstone.
-    if (range_tombstone_.seq() == 0) {
-      // The tombstone doesn't apply to the sstable. Return the entry.
+    if (range_tombstone_.seq() == 0 ||
+        icomp_.Compare(key(), tombstone_internal_end_key()) >= 0) {
+      // The tombstone doesn't apply to the current key or doesn't allow us to
+      // skip past it. Return the entry.
       return;
     }
 

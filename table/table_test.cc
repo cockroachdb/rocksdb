@@ -1279,6 +1279,73 @@ TEST_F(BlockBasedTableTest, RangeDelBlock) {
   }
 }
 
+TEST_F(BlockBasedTableTest, SplitRangeDelCoveringPut) {
+  // Regression test for an infinite loop in range tombstone seek-to-end-key
+  // optimization. It happened when a range tombstone was split according to
+  // its containing files' boundaries. In particular, the split point had to
+  // have a lower sequence number than a point key at the same user key in a
+  // file that the range tombstone covered.
+  const std::string kBeginKey = "a", kSplitKey = "k", kEndKey = "z";
+
+  // The table will have a single Put at seqnum 1, so a range tombstone with
+  // seqnum 2 covers keys in that table. Then, the seek-to-end-key optimization
+  // will be enabled.
+  RangeTombstone range_del(kBeginKey, kEndKey, 2 /* seq_ */);
+
+  // Table bounds truncate tombstone to
+  // `[kBeginKey#kMaxSeqnum, kSplitKey#0)#2`.
+  const InternalKey kTableLowerBound(kBeginKey, kMaxSequenceNumber,
+                                     kTypeRangeDeletion);
+  // This bound has seqnum 1 since it reperesents a table upper bound, and the
+  // RangeDelAggregator subtracts one from an upper bound's seqnum to make the
+  // range tombstone inclusive over the table's last key.
+  const InternalKey kTableUpperBound(kSplitKey, 1, kTypeRangeDeletion);
+
+  InternalKeyComparator icmp(BytewiseComparator());
+  RangeDelAggregator range_del_agg(icmp, {} /* snapshots */,
+                                   true /* collapse_deletions */);
+  auto ikey_and_val = range_del.Serialize();
+  std::unique_ptr<test::VectorIterator> range_del_iter(
+      new test::VectorIterator({ikey_and_val.first.Encode().ToString()},
+                               {ikey_and_val.second.ToString()}));
+  range_del_agg.AddTombstones(std::move(range_del_iter), &kTableLowerBound,
+                              &kTableUpperBound);
+
+  Options options;
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_restart_interval = 1;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+  ImmutableCFOptions ioptions(options);
+
+  TableConstructor c(BytewiseComparator());
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  InternalKey key(kSplitKey, 1, kTypeValue);
+  c.Add(key.Encode().ToString(), "val");
+  c.Finish(options, ioptions, table_options, icmp, &keys, &kvmap);
+
+  // Assign the table's max seqnum (1) to be lower than the range tombstone's
+  // seqnum (2) to ensure the seek-to-end-key optimization is triggered. Also,
+  // give it a wide range in the keyspace to ensure the range tombstone is not
+  // truncated.
+  FileMetaData meta;
+  meta.smallest_seqno = 1;
+  meta.largest_seqno = 1;
+  meta.smallest = InternalKey("\x00", 1, kTypeValue);
+  meta.largest = InternalKey("\xff", 1, kTypeValue);
+
+  auto* reader = c.GetTableReader();
+  std::unique_ptr<InternalIterator> iter(reader->NewIterator(
+        ReadOptions(), &range_del_agg, &meta));
+  iter->SeekToFirst();
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_OK(iter->status());
+  iter->Seek(key.Encode());
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_OK(iter->status());
+}
+
 TEST_F(BlockBasedTableTest, FilterPolicyNameProperties) {
   TableConstructor c(BytewiseComparator(), true /* convert_to_internal_key_ */);
   c.Add("a1", "val1");
