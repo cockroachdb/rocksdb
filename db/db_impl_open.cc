@@ -651,6 +651,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
     std::string scratch;
     Slice record;
     WriteBatch batch;
+    SequenceNumber last_observed_seq = 0;
 
     while (!stop_replay_by_wal_filter &&
            reader.ReadRecord(&record, &scratch,
@@ -763,6 +764,13 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
       // we just ignore the update.
       // That's why we set ignore missing column families to true
       bool has_valid_writes = false;
+      if (last_observed_seq > sequence) {
+        status = Status::Corruption(
+          "Sequence numbers in WAL not in increasing order");
+        reporter.Corruption(record.size(), status);
+        continue;
+      }
+      last_observed_seq = sequence;
       status = WriteBatchInternal::InsertInto(
           &batch, column_family_memtables_.get(), &flush_scheduler_, true,
           log_number, this, false /* concurrent_memtable_writes */,
