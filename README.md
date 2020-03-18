@@ -31,38 +31,42 @@ by GitHub.
   4. Push your changes to the named feature branch. External contributors
      will need to fork this repository and push to their fork instead.
 
-  5. Make a commit in [cockroachdb/cockroach][cockroachdb] that updates the
-     submodule ref.
+  5. Open a pull request on `cockroachdb/rocksdb` to merge your feature branch
+     into the branch that `c-deps/rocksdb` on `cockroachdb/cockroach` is
+     pointing to. The PR diff should just be your changes. If you see more than
+     just your changes in the diff, you're doing something wrong or these
+     instructions are out of date.
+
+  6. Once your `cockroachdb/rocksdb` PR has been approved, merge it into the
+     release branch  by pressing the green Merge button, or ask someone with
+     commit access to do so.
+
+  7. Make a commit in [cockroachdb/cockroach][cockroachdb] that updates the
+     submodule ref to point to the latest SHA on the `cockroachdb/rocksdb`
+     release branch you merged into.
 
      ```shell
      $ cd $GOPATH/src/github.com/cockroachdb/cockroach
+     $ cd c-deps/rocksdb
+     $ git fetch --all
+     $ git checkout <SHA>
+     $ cd ..
      $ git add c-deps/rocksdb
-     $ git commit -m "rocksdb: upgrade to..."
+     $ git commit -m "c-deps/rocksdb: upgrade to..."
      ```
 
-  6. Open a pull request against [cockroachdb/cockroach][cockroachdb] and wait
-     for review.
+  8. Open a pull request against [cockroachdb/cockroach][cockroachdb] and wait
+     for review. Check Github's diff view to see what changes you're pulling in
+     from the `cockroachdb/rocksdb` repository; it should just be the changes
+     since the last reference bump, and ideally just your changes.
 
-  7. *Before* your downstream PR has merged but after it has been LGTM'd and
-     passed tests, push your changes to the release branch in this repository.
-     You do not need to open a PR against this repository directly; the review
-     of your downstream PR suffices.
+  9. Once your `cockroachdb/cockroach` PR has been reviewed and LGTM'd, follow
+     the usual `cockroachdb/cockroach` merge procedure through bors, or request
+     someone with commit access to do so.
 
-     ```shell
-     $ git checkout crl-release-X.X
-     $ git merge --ff-only FEATURE-BRANCH
-     $ git push origin crl-release-X.X
-     ```
-
-     **Important:** don't force push! If your push is rejected, either someone
-     else merged an intervening change or you didn't base your feature branch
-     off the tip of the release branch. Rebase your feature branch, update your
-     downstream PR with the new commit SHA, and verify tests still pass. Then
-     try your push again.
-
-  8. From the GitHub web UI, verify that the exact submodule SHA that landed in
-     [cockroachdb/cockroach][cockroachdb] is on the appropriate release branch.
-     If it is, delete your feature branch.
+  10. From the GitHub web UI, verify that the exact submodule SHA that landed
+     in [cockroachdb/cockroach][cockroachdb] is on the appropriate release
+     branch. If it is, delete your feature branch in `cockroachdb/rocksdb`.
 
      ```shell
      $ git push -d origin FEATURE-BRANCH
@@ -90,7 +94,7 @@ by GitHub.
      crucial in ensuring that we don't break commit references in
      [cockroachdb/cockroach][cockroachdb]'s submodules.
 
-  5. Follow steps three through six above.
+  5. Follow steps seven through nine above.
 
 [CockroachDB]: https://github.com/cockroachdb/cockroach
 [RocksDB]: https://github.com/facebook/rocksdb 
