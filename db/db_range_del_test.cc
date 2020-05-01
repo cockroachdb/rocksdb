@@ -1670,6 +1670,156 @@ TEST_F(DBRangeDelTest, RangeTombstoneWrittenToMinimalSsts) {
   ASSERT_EQ(1, num_range_deletions);
 }
 
+TEST_F(DBRangeDelTest, SnapshotRangeDelStress) {
+  const int kRuns = 1000;
+  const int kMiddleKey = kRuns * kRuns;
+
+  Options options = CurrentOptions();
+  options.compression = kNoCompression;
+  Reopen(options);
+
+  auto key = [&](int i) {
+    char buf[100];
+    snprintf(buf, sizeof(buf), "key%08d", i);
+    return std::string(buf);
+  };
+
+  std::vector<const Snapshot*> snapshots;
+  for (int r = 0; r < kRuns; ++r) {
+      // We use a keyspace that is 2*kRuns^2 wide. In other words there are
+      // 2*kRuns sections of the keyspace, each with kRuns elements. On every
+      // run, we write to the r-th element of each section of the keyspace.
+      for (int i = 0; i < 2 * kRuns; i++) {
+        ASSERT_OK(Put(key(kRuns * i + r), "a"));
+      }
+
+      // Now we delete some the keyspace through a DeleteRange. We delete from
+      // the middle of the keyspace outwards. Since the keyspace is made of
+      // 2*kRun sections, we delete an additional two of these sections per run.
+      ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(),
+                                 key(kMiddleKey - kRuns * r),
+                                 key(kMiddleKey + kRuns * r)));
+
+      snapshots.push_back(db_->GetSnapshot());
+  }
+
+  ASSERT_OK(dbfull()->TEST_SwitchMemtable());
+
+  int run = 0;
+  for (auto* snapshot : snapshots) {
+    // Count the keys at this snapshot.
+    ReadOptions read_opts;
+    read_opts.snapshot = snapshot;
+    auto* iter = db_->NewIterator(read_opts);
+    iter->SeekToFirst();
+    int keys_found = 0;
+    for (; iter->Valid(); iter->Next()) {
+      ++keys_found;
+    }
+    delete iter;
+
+    // At the time that this snapshot was taken, (run+1)*2*kRuns
+    // keys were set (one in each of the 2*kRuns sections per run).
+    // But this run also deleted the 2*run middlemost sections.
+    // At the time this snapshot ran, each of those sections had
+    // (run+1) keys populated, so we deleted 2*run*(run+1) keys
+    // with the delete range.
+    const int keys_expected = (run+1) * 2 * kRuns - 2*run*(run+1);
+    ASSERT_EQ(keys_expected, keys_found);
+
+    db_->ReleaseSnapshot(snapshot);
+    ++run;
+  }
+}
+
+TEST_F(DBRangeDelTest, SnapshotIgnoresNewerRangeDeletions) {
+  Options options = CurrentOptions();
+  options.compression = kNoCompression;
+  Reopen(options);
+
+  auto put =
+      [&](int i) {
+        auto k = Key(i);
+        ASSERT_OK(Put(k, "a"));
+      };
+  auto deleteRange =
+      [&](int start, int end) {
+        auto sk = Key(start);
+        auto ek = Key(end);
+        ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(), sk, ek));
+      };
+  auto check =
+      [&](const Snapshot *snapshot, const int expected) {
+        ReadOptions read_opts;
+        read_opts.snapshot = snapshot;
+        auto* iter = db_->NewIterator(read_opts);
+        int keys_found = 0;
+        for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+          ++keys_found;
+        }
+        delete iter;
+        ASSERT_EQ(expected, keys_found);
+      };
+
+  put(0);
+  put(1);
+  put(2);
+  put(3);
+
+  auto snapshot = db_->GetSnapshot();
+  check(snapshot, 4);
+
+  deleteRange(0, 2);
+  check(snapshot, 4);
+
+  ASSERT_OK(db_->Flush(FlushOptions()));
+  check(snapshot, 4);
+
+  deleteRange(2, 4);
+  check(snapshot, 4);
+}
+
+TEST_F(DBRangeDelTest, SnapshotPreventsDroppedKeysInImmMemTables) {
+  const int kFileBytes = 1 << 20;
+
+  Options options = CurrentOptions();
+  options.compression = kNoCompression;
+  options.disable_auto_compactions = true;
+  options.target_file_size_base = kFileBytes;
+  Reopen(options);
+
+  // block flush thread -> pin immtables in memory
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->LoadDependency({
+      {"SnapshotPreventsDroppedKeysInImmMemTables:AfterNewIterator",
+       "DBImpl::BGWorkFlush"},
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(Put(Key(0), "a"));
+  std::unique_ptr<const Snapshot, std::function<void(const Snapshot*)>>
+      snapshot(db_->GetSnapshot(),
+               [this](const Snapshot* s) { db_->ReleaseSnapshot(s); });
+
+  ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(), Key(0),
+                             Key(10)));
+
+  ASSERT_OK(dbfull()->TEST_SwitchMemtable());
+
+  ReadOptions read_opts;
+  read_opts.snapshot = snapshot.get();
+  std::unique_ptr<Iterator> iter(db_->NewIterator(read_opts));
+
+  TEST_SYNC_POINT("SnapshotPreventsDroppedKeysInImmMemTables:AfterNewIterator");
+
+  iter->SeekToFirst();
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ(Key(0), iter->key());
+
+  iter->Next();
+  ASSERT_FALSE(iter->Valid());
+}
+
 #endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
