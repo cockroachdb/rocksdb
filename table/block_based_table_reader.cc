@@ -2133,32 +2133,35 @@ void BlockBasedTableIterator::FindKeyBackward() {
 }
 
 void BlockBasedTableIterator::InitRangeTombstone(const Slice& target) {
-  if (range_del_agg_ == nullptr || file_meta_ == nullptr) {
-    return;
-  }
+  // NOTE: this optimization is disabled as it has correctness issues
+  // when used with snapshot reads.
 
-  range_tombstone_ = range_del_agg_->GetTombstone(target, file_meta_->largest_seqno);
+  // if (range_del_agg_ == nullptr || file_meta_ == nullptr) {
+  //   return;
+  // }
 
-  // Clear the start key if it is less than the smallest key in the
-  // sstable. This allows us to avoid comparisons during Prev() in the common
-  // case.
-  if (range_tombstone_.start_key() != nullptr) {
-    ParsedInternalKey smallest;
-    if (!ParseInternalKey(file_meta_->smallest.Encode(), &smallest) ||
-        (icomp_.Compare(*range_tombstone_.start_key(), smallest) < 0)) {
-      range_tombstone_.SetStartKey(nullptr);
-    }
-  }
-  // Clear the end key if it is larger than the largest key in the
-  // sstable. This allows us to avoid comparisons during Next() in the common
-  // case.
-  if (range_tombstone_.end_key() != nullptr) {
-    ParsedInternalKey largest;
-    if (!ParseInternalKey(file_meta_->largest.Encode(), &largest) ||
-        (icomp_.Compare(*range_tombstone_.end_key(), largest) > 0)) {
-      range_tombstone_.SetEndKey(nullptr);
-    }
-  }
+  // range_tombstone_ = range_del_agg_->GetTombstone(target, file_meta_->largest_seqno);
+
+  // // Clear the start key if it is less than the smallest key in the
+  // // sstable. This allows us to avoid comparisons during Prev() in the common
+  // // case.
+  // if (range_tombstone_.start_key() != nullptr) {
+  //   ParsedInternalKey smallest;
+  //   if (!ParseInternalKey(file_meta_->smallest.Encode(), &smallest) ||
+  //       (icomp_.Compare(*range_tombstone_.start_key(), smallest) < 0)) {
+  //     range_tombstone_.SetStartKey(nullptr);
+  //   }
+  // }
+  // // Clear the end key if it is larger than the largest key in the
+  // // sstable. This allows us to avoid comparisons during Next() in the common
+  // // case.
+  // if (range_tombstone_.end_key() != nullptr) {
+  //   ParsedInternalKey largest;
+  //   if (!ParseInternalKey(file_meta_->largest.Encode(), &largest) ||
+  //       (icomp_.Compare(*range_tombstone_.end_key(), largest) > 0)) {
+  //     range_tombstone_.SetEndKey(nullptr);
+  //   }
+  // }
 }
 
 std::string BlockBasedTableIterator::tombstone_internal_start_key() const {
